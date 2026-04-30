@@ -1,55 +1,94 @@
-# STM32F103C8T6 体感魔方
+# STM32-MPU6050-3D-Cube
 
-基于 **MPU6050**（六轴陀螺仪+加速度计）和 **OLED 显示屏** 的 3D 姿态实时显示项目。
+A real-time 3D attitude display project based on **STM32F103C8T6**, **MPU6050** (6-axis gyroscope + accelerometer), and **OLED** (128x64).
 
-## 功能
+When you rotate the board, a 3D wireframe cube on the OLED rotates accordingly — like a somatosensory Rubik's cube.
 
-- **软件 I2C** 驱动 MPU6050，读取原始加速度和角速度数据
-- **互补滤波** 融合陀螺仪与加速度计数据，实时解算 Pitch / Roll / Yaw
-- **3D 线框魔方** 透视投影到 OLED（128×64），跟随实际姿态同步旋转
-- **硬件定时器 TIM2** 精确测量帧时间，保证姿态积分与真实时间同步
-- **按键交互**：
-  - KEY1：切换旋转方向（正向/反向）
-  - KEY2：陀螺仪零偏重标定
-- **上电自检**：检测 MPU6050 连接状态
+## Features
 
-## 硬件需求
+- **Software I2C** bit-banging to drive MPU6050 (raw acceleration & angular velocity)
+- **Complementary filter** fusing gyroscope and accelerometer data for real-time Pitch / Roll / Yaw estimation
+- **3D wireframe cube** rendered via perspective projection on a 128×64 OLED
+- **Hardware timer TIM2** for accurate frame time measurement — ensures attitude integration stays synchronized with real time
+- **Button controls**:
+  - KEY1 — toggle rotation direction (normal / reverse)
+  - KEY2 — recalibrate gyroscope zero-bias
+- **Power-on self-test** — checks MPU6050 connection and displays status
 
-| 组件        | 说明                 |
-| ----------- | -------------------- |
-| MCU         | STM32F103C8T6        |
-| 传感器      | MPU6050（六轴）       |
-| 显示屏      | 0.96" OLED 128×64    |
-| 按键        | 2个（KEY1, KEY2）     |
-| LED         | 1个（状态指示）       |
+## Hardware Requirements
 
-## 引脚连接
+| Component       | Specification       |
+|-----------------|---------------------|
+| MCU             | STM32F103C8T6       |
+| Sensor          | MPU6050 (6-axis)    |
+| Display         | 0.96" OLED 128×64   |
+| Buttons         | 2x (KEY1, KEY2)     |
+| LED             | 1x (status)         |
 
-| STM32 | MPU6050 | OLED |
-|-------|---------|------|
-| PB10  | SCL     | -    |
-| PB11  | SDA     | -    |
-| PB3  | -       | SCL  |
-| PB5  | -       | SDA  |
+## Pin Connections
 
-## 软件架构
+| STM32 | MPU6050 | OLED  |
+|-------|---------|-------|
+| PB10  | SCL     | -     |
+| PB11  | SDA     | -     |
+| PB3   | -       | SCL   |
+| PB5   | -       | SDA   |
 
-- **MyI2C** — 软件模拟 I2C 时序（GPIO 位翻转）
-- **MPU6050** — 传感器寄存器读写与数据获取
-- **Attitude** — 互补滤波姿态解算 + 陀螺零偏标定
-- **Cube3D** — 三维旋转矩阵 + 透视投影 → OLED 线框绘制
-- **OLED** — SSD1306 驱动（含汉字字模）
+> Note: Adjust pins in the source code if your wiring differs.
 
-## 使用说明
+## Software Architecture
 
-1. 上电后 OLED 显示 MPU6050 ID（正常应为 `0x68`）
-2. 自动进入陀螺仪零偏标定（约 2 秒，显示"校准中..."）
-3. 标定完成后魔方随板子转动实时同步旋转
-4. 按 KEY2 可随时重新标定
+| Module      | Role |
+|-------------|------|
+| **MyI2C**   | Software-bitbanged I2C protocol (GPIO toggling) |
+| **MPU6050** | Sensor register read/write and data acquisition |
+| **Attitude**| Complementary filter attitude estimation + gyro zero-bias calibration |
+| **Cube3D**  | 3D rotation matrix + perspective projection → OLED wireframe drawing |
+| **OLED**    | SSD1306 driver (with Chinese character font table) |
 
-## 关键算法
+## Usage
 
-- **互补滤波**：`alpha = 0.999`，高速率陀螺积分 + 加速度计低频修正
-- **零偏标定**：静止采样 300 次，取平均作为陀螺零偏，消除温漂
-- **3D 旋转**：右手系标准旋转矩阵，依次绕 XYZ 轴旋转
-- **透视投影**：基于相机距离的缩放投影，重心自动居中
+### 1. Build & Flash
+
+Open the project with **Keil uVision** (`Project.uvprojx`), build, and flash to the STM32F103C8T6 board.
+
+### 2. Power On
+
+Once powered, the OLED will show:
+
+```
+MPU ID:68
+MPU OK
+```
+
+If the display shows `MPU ERR / CHECK WIRE`, check the MPU6050 wiring.
+
+### 3. Auto Calibration
+
+After the self-test, the board enters automatic gyroscope calibration. **Keep the board stationary** on a flat surface during this step. The OLED shows:
+
+```
+校准中...
+```
+
+Calibration takes about 2 seconds (300 samples). Once finished, it displays `完成` and the cube appears.
+
+### 4. Normal Operation
+
+Rotate the board — the 3D cube on the OLED rotates in real time, matching the physical orientation.
+
+### 5. Button Controls
+
+| Button | Action | OLED Feedback |
+|--------|--------|---------------|
+| **KEY1** | Toggle rotation direction | Shows `方向:NORMAL / REVERSE` for 400ms |
+| **KEY2** | Recalibrate gyroscope | Shows 校准中... → 完成 |
+
+> Recalibrate whenever you notice drift. Place the board flat and still during calibration.
+
+## Key Algorithms
+
+- **Complementary Filter**: `alpha = 0.999` — high-rate gyro integration corrected by low-passed accelerometer data
+- **Zero-bias Calibration**: averages 300 stationary samples to cancel gyro offset and temperature drift
+- **3D Rotation**: standard right-handed rotation matrices (X → Y → Z)
+- **Perspective Projection**: camera-distance-based scaling with automatic centroid centering
