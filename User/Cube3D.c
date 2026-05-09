@@ -10,8 +10,10 @@
 #define CAMERA_Z        100.0f
 #define PROJ_SCALE      108.0f
 
-/* 魔方线框半边长，单位可视作任意缩放单位 */
-#define CUBE_HALF_SIZE  18.0f
+/* 线框半边长，单位可视作任意缩放单位 */
+#define HALF_SIZE      18.0f
+/* 八面体放大到与正方体相同的视觉大小（正方体角点距 = 18*√3 ≈ 31.18） */
+#define OCT_HALF_SIZE  31.18f
 
 typedef struct
 {
@@ -26,25 +28,195 @@ typedef struct
 	int16_t y;
 } Vec2i_t;
 
-/* 立方体8个顶点 */
-static const Vec3f_t kCubeVertices[8] =
+/* ========== 立方体：8顶点、12边 ========== */
+#define CUBE_VTX_COUNT  8
+#define CUBE_EDGE_COUNT 12
+
+static const Vec3f_t kCubeVertices[CUBE_VTX_COUNT] =
 {
-	{-CUBE_HALF_SIZE, -CUBE_HALF_SIZE, -CUBE_HALF_SIZE},
-	{ CUBE_HALF_SIZE, -CUBE_HALF_SIZE, -CUBE_HALF_SIZE},
-	{ CUBE_HALF_SIZE,  CUBE_HALF_SIZE, -CUBE_HALF_SIZE},
-	{-CUBE_HALF_SIZE,  CUBE_HALF_SIZE, -CUBE_HALF_SIZE},
-	{-CUBE_HALF_SIZE, -CUBE_HALF_SIZE,  CUBE_HALF_SIZE},
-	{ CUBE_HALF_SIZE, -CUBE_HALF_SIZE,  CUBE_HALF_SIZE},
-	{ CUBE_HALF_SIZE,  CUBE_HALF_SIZE,  CUBE_HALF_SIZE},
-	{-CUBE_HALF_SIZE,  CUBE_HALF_SIZE,  CUBE_HALF_SIZE}
+	{-HALF_SIZE, -HALF_SIZE, -HALF_SIZE},
+	{ HALF_SIZE, -HALF_SIZE, -HALF_SIZE},
+	{ HALF_SIZE,  HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE,  HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE, -HALF_SIZE,  HALF_SIZE},
+	{ HALF_SIZE, -HALF_SIZE,  HALF_SIZE},
+	{ HALF_SIZE,  HALF_SIZE,  HALF_SIZE},
+	{-HALF_SIZE,  HALF_SIZE,  HALF_SIZE}
 };
 
-/* 立方体12条边，由顶点索引对组成 */
-static const uint8_t kCubeEdges[12][2] =
+static const uint8_t kCubeEdges[CUBE_EDGE_COUNT][2] =
 {
 	{0, 1}, {1, 2}, {2, 3}, {3, 0},
 	{4, 5}, {5, 6}, {6, 7}, {7, 4},
 	{0, 4}, {1, 5}, {2, 6}, {3, 7}
+};
+
+/* ========== 八面体：6顶点、12边 ========== */
+#define OCT_VTX_COUNT  6
+#define OCT_EDGE_COUNT 12
+
+static const Vec3f_t kOctVertices[OCT_VTX_COUNT] =
+{
+	{ 0.0f,           0.0f,            OCT_HALF_SIZE},   /* 0: 上顶点 */
+	{ 0.0f,           0.0f,           -OCT_HALF_SIZE},   /* 1: 下顶点 */
+	{ OCT_HALF_SIZE,  0.0f,           0.0f          },   /* 2: +X */
+	{-OCT_HALF_SIZE,  0.0f,           0.0f          },   /* 3: -X */
+	{ 0.0f,           OCT_HALF_SIZE,  0.0f          },   /* 4: +Y */
+	{ 0.0f,          -OCT_HALF_SIZE,  0.0f          }    /* 5: -Y */
+};
+
+static const uint8_t kOctEdges[OCT_EDGE_COUNT][2] =
+{
+	{0, 2}, {0, 3}, {0, 4}, {0, 5},   /* 上顶点 → 赤道 */
+	{1, 2}, {1, 3}, {1, 4}, {1, 5},   /* 下顶点 → 赤道 */
+	{2, 4}, {4, 3}, {3, 5}, {5, 2}    /* 赤道四边形 */
+};
+
+/* ========== 正四面体：4顶点、6边 ========== */
+#define TET_VTX_COUNT  4
+#define TET_EDGE_COUNT 6
+
+/* 取正方体的4个交替角点，构成内接正四面体，与正方体等大 */
+static const Vec3f_t kTetVertices[TET_VTX_COUNT] =
+{
+	{ HALF_SIZE,  HALF_SIZE,  HALF_SIZE},
+	{ HALF_SIZE, -HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE,  HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE, -HALF_SIZE,  HALF_SIZE}
+};
+
+static const uint8_t kTetEdges[TET_EDGE_COUNT][2] =
+{
+	{0, 1}, {0, 2}, {0, 3},
+	{1, 2}, {1, 3}, {2, 3}
+};
+
+/* ========== 正十二面体：20顶点、30边 ========== */
+#define DOD_VTX_COUNT  20
+#define DOD_EDGE_COUNT 30
+
+/* 黄金比例 φ = (1+√5)/2，用于十二面体坐标 */
+#define PHI  1.61803398875f
+
+static const Vec3f_t kDodVertices[DOD_VTX_COUNT] =
+{
+	/* 0-7: 正方体角点 (±1, ±1, ±1) */
+	{ HALF_SIZE,  HALF_SIZE,  HALF_SIZE},
+	{ HALF_SIZE,  HALF_SIZE, -HALF_SIZE},
+	{ HALF_SIZE, -HALF_SIZE,  HALF_SIZE},
+	{ HALF_SIZE, -HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE,  HALF_SIZE,  HALF_SIZE},
+	{-HALF_SIZE,  HALF_SIZE, -HALF_SIZE},
+	{-HALF_SIZE, -HALF_SIZE,  HALF_SIZE},
+	{-HALF_SIZE, -HALF_SIZE, -HALF_SIZE},
+	/* 8-19: 循环置换 (0, ±1/φ, ±φ) × HALF_SIZE */
+	{ 0.0f,              HALF_SIZE/PHI,  HALF_SIZE*PHI},
+	{ 0.0f,              HALF_SIZE/PHI, -HALF_SIZE*PHI},
+	{ 0.0f,             -HALF_SIZE/PHI,  HALF_SIZE*PHI},
+	{ 0.0f,             -HALF_SIZE/PHI, -HALF_SIZE*PHI},
+	{ HALF_SIZE*PHI,     0.0f,           HALF_SIZE/PHI},
+	{ HALF_SIZE*PHI,     0.0f,          -HALF_SIZE/PHI},
+	{-HALF_SIZE*PHI,     0.0f,           HALF_SIZE/PHI},
+	{-HALF_SIZE*PHI,     0.0f,          -HALF_SIZE/PHI},
+	{ HALF_SIZE/PHI,     HALF_SIZE*PHI,  0.0f          },
+	{ HALF_SIZE/PHI,    -HALF_SIZE*PHI,  0.0f          },
+	{-HALF_SIZE/PHI,     HALF_SIZE*PHI,  0.0f          },
+	{-HALF_SIZE/PHI,    -HALF_SIZE*PHI,  0.0f          }
+};
+
+/* 正十二面体30条边：每个立方体角点连接3个非立方体顶点，非立方体顶点配对成6条边 */
+static const uint8_t kDodEdges[DOD_EDGE_COUNT][2] =
+{
+	/* 立方体角点 → 非立方体顶点 (8×3 = 24条) */
+	{0,8}, {0,12}, {0,16},
+	{1,9}, {1,13}, {1,16},
+	{2,10}, {2,12}, {2,17},
+	{3,11}, {3,13}, {3,17},
+	{4,8}, {4,14}, {4,18},
+	{5,9}, {5,15}, {5,18},
+	{6,10}, {6,14}, {6,19},
+	{7,11}, {7,15}, {7,19},
+	/* 非立方体顶点间配对 (6条) */
+	{8,10}, {9,11}, {12,13},
+	{14,15}, {16,18}, {17,19}
+};
+
+/* ========== 正二十面体：12顶点、30边 ========== */
+#define ICO_VTX_COUNT  12
+#define ICO_EDGE_COUNT 30
+
+/* 二十面体缩放，使顶点距与正方体角点距相同（18*√3 / √(1+φ²)） */
+#define ICO_HALF_SIZE  (HALF_SIZE * 0.91058f)
+
+static const Vec3f_t kIcoVertices[ICO_VTX_COUNT] =
+{
+	/*  0- 3: (0, ±1, ±φ) */
+	{ 0.0f,           HALF_SIZE,      HALF_SIZE*PHI},
+	{ 0.0f,           HALF_SIZE,     -HALF_SIZE*PHI},
+	{ 0.0f,          -HALF_SIZE,      HALF_SIZE*PHI},
+	{ 0.0f,          -HALF_SIZE,     -HALF_SIZE*PHI},
+	/*  4- 7: (±1, ±φ, 0) */
+	{ HALF_SIZE,      HALF_SIZE*PHI,  0.0f          },
+	{ HALF_SIZE,     -HALF_SIZE*PHI,  0.0f          },
+	{-HALF_SIZE,      HALF_SIZE*PHI,  0.0f          },
+	{-HALF_SIZE,     -HALF_SIZE*PHI,  0.0f          },
+	/*  8-11: (±φ, 0, ±1) */
+	{ HALF_SIZE*PHI,  0.0f,           HALF_SIZE     },
+	{ HALF_SIZE*PHI,  0.0f,          -HALF_SIZE     },
+	{-HALF_SIZE*PHI,  0.0f,           HALF_SIZE     },
+	{-HALF_SIZE*PHI,  0.0f,          -HALF_SIZE     }
+};
+
+static const uint8_t kIcoEdges[ICO_EDGE_COUNT][2] =
+{
+	{0,2}, {0,4}, {0,6}, {0,8}, {0,10},
+	{1,3}, {1,4}, {1,6}, {1,9}, {1,11},
+	{2,5}, {2,7}, {2,8}, {2,10},
+	{3,5}, {3,7}, {3,9}, {3,11},
+	{4,6}, {4,8}, {4,9},
+	{5,7}, {5,8}, {5,9},
+	{6,10}, {6,11},
+	{7,10}, {7,11},
+	{8,9},
+	{10,11}
+};
+
+/* ========== 立方八面体：12顶点、24边 ========== */
+#define CO_VTX_COUNT  12
+#define CO_EDGE_COUNT 24
+
+/* 缩放使顶点距与正方体角点相同（18*√3 / √2） */
+#define CO_HALF_SIZE  22.05f
+
+static const Vec3f_t kCoVertices[CO_VTX_COUNT] =
+{
+	/* (±1, ±1, 0) */
+	{ CO_HALF_SIZE,  CO_HALF_SIZE,  0.0f          },
+	{ CO_HALF_SIZE, -CO_HALF_SIZE,  0.0f          },
+	{-CO_HALF_SIZE,  CO_HALF_SIZE,  0.0f          },
+	{-CO_HALF_SIZE, -CO_HALF_SIZE,  0.0f          },
+	/* (±1, 0, ±1) */
+	{ CO_HALF_SIZE,  0.0f,           CO_HALF_SIZE },
+	{ CO_HALF_SIZE,  0.0f,          -CO_HALF_SIZE },
+	{-CO_HALF_SIZE,  0.0f,           CO_HALF_SIZE },
+	{-CO_HALF_SIZE,  0.0f,          -CO_HALF_SIZE },
+	/* (0, ±1, ±1) */
+	{ 0.0f,           CO_HALF_SIZE,  CO_HALF_SIZE },
+	{ 0.0f,           CO_HALF_SIZE, -CO_HALF_SIZE },
+	{ 0.0f,          -CO_HALF_SIZE,  CO_HALF_SIZE },
+	{ 0.0f,          -CO_HALF_SIZE, -CO_HALF_SIZE }
+};
+
+static const uint8_t kCoEdges[CO_EDGE_COUNT][2] =
+{
+	{0,4}, {0,5}, {0,8}, {0,9},
+	{1,4}, {1,5}, {1,10}, {1,11},
+	{2,6}, {2,7}, {2,8}, {2,9},
+	{3,6}, {3,7}, {3,10}, {3,11},
+	{4,8}, {4,10},
+	{5,9}, {5,11},
+	{6,8}, {6,10},
+	{7,9}, {7,11}
 };
 
 /*
@@ -102,41 +274,87 @@ static Vec2i_t ProjectToScreen(Vec3f_t v)
 	return p;
 }
 
-void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg)
+void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape)
 {
 	uint8_t i;
-	Vec3f_t rotated[8];
-	Vec2i_t projected[8];
+	uint8_t vtxCount, edgeCount;
+	const Vec3f_t *vertices;
+	const uint8_t (*edges)[2];
+	Vec3f_t rotated[20];    /* 最大顶点数（十二面体20个） */
+	Vec2i_t projected[20];
 	uint8_t idx0, idx1;
 	int16_t sumX = 0;
 	int16_t sumY = 0;
 	int16_t offsetX;
 	int16_t offsetY;
 
+	if (shape == SHAPE_OCTAHEDRON)
+	{
+		vertices = kOctVertices;
+		edges    = kOctEdges;
+		vtxCount = OCT_VTX_COUNT;
+		edgeCount = OCT_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_TETRAHEDRON)
+	{
+		vertices = kTetVertices;
+		edges    = kTetEdges;
+		vtxCount = TET_VTX_COUNT;
+		edgeCount = TET_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_DODECAHEDRON)
+	{
+		vertices = kDodVertices;
+		edges    = kDodEdges;
+		vtxCount = DOD_VTX_COUNT;
+		edgeCount = DOD_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_ICOSAHEDRON)
+	{
+		vertices = kIcoVertices;
+		edges    = kIcoEdges;
+		vtxCount = ICO_VTX_COUNT;
+		edgeCount = ICO_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_CUBOCTAHEDRON)
+	{
+		vertices = kCoVertices;
+		edges    = kCoEdges;
+		vtxCount = CO_VTX_COUNT;
+		edgeCount = CO_EDGE_COUNT;
+	}
+	else
+	{
+		vertices = kCubeVertices;
+		edges    = kCubeEdges;
+		vtxCount = CUBE_VTX_COUNT;
+		edgeCount = CUBE_EDGE_COUNT;
+	}
+
 	/* 每帧仅清缓冲，最后统一刷新，避免"先黑屏再绘图"的闪烁 */
 	OLED_ClearBuffer();
 
-	for (i = 0; i < 8; i++)
+	for (i = 0; i < vtxCount; i++)
 	{
-		rotated[i] = RotateXYZ(kCubeVertices[i], pitchDeg, rollDeg, yawDeg);
+		rotated[i] = RotateXYZ(vertices[i], pitchDeg, rollDeg, yawDeg);
 		projected[i] = ProjectToScreen(rotated[i]);
 		sumX += projected[i].x;
 		sumY += projected[i].y;
 	}
 
 	/* 将投影重心锁定在屏幕中心，防止整体漂移出画面 */
-	offsetX = (int16_t)SCREEN_CX - (sumX / 8);
-	offsetY = (int16_t)SCREEN_CY - (sumY / 8);
-	for (i = 0; i < 8; i++)
+	offsetX = (int16_t)SCREEN_CX - (sumX / (int16_t)vtxCount);
+	offsetY = (int16_t)SCREEN_CY - (sumY / (int16_t)vtxCount);
+	for (i = 0; i < vtxCount; i++)
 	{
 		projected[i].x += offsetX;
 		projected[i].y += offsetY;
 	}
 
-	for (i = 0; i < 12; i++)
+	for (i = 0; i < edgeCount; i++)
 	{
-		idx0 = kCubeEdges[i][0];
-		idx1 = kCubeEdges[i][1];
+		idx0 = edges[i][0];
+		idx1 = edges[i][1];
 		OLED_DrawLine(projected[idx0].x, projected[idx0].y,
 					  projected[idx1].x, projected[idx1].y, 1);
 	}

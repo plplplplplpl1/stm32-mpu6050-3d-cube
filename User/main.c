@@ -110,6 +110,7 @@ int main(void)
 	uint8_t keyNum;
 	int8_t rotationDir = 1;				// 旋转方向：1=正向，-1=反向
 	uint8_t dirChanged = 0;				// 方向改变标记，用于刷新指示
+	uint8_t shape = SHAPE_CUBE;			// 当前显示图形：SHAPE_CUBE 或 SHAPE_OCTAHEDRON
 	Attitude_t attitude;
 	uint32_t lastTick, curTick;
 	float dtSec;
@@ -168,6 +169,21 @@ int main(void)
 			dirChanged = 1;
 		}
 
+		/* 按键3（PA7）：循环切换显示图形 */
+		if (keyNum == 3)
+		{
+			shape = (shape + 1) % 6;
+			OLED_Clear();
+			if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
+			else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
+			else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
+			else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
+			else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
+			else                                 OLED_ShowString(2, 4, "CUBOCT");
+			Delay_ms(400);
+			lastTick = TIM2->CNT;
+		}
+
 		/* 切换后短暂显示方向状态 */
 		if (dirChanged)
 		{
@@ -207,6 +223,7 @@ int main(void)
 		 */
 		Cube3D_Render(-attitude.PitchDeg * rotationDir,
 					  -attitude.RollDeg * rotationDir,
-					   attitude.YawDeg * rotationDir);
+					   attitude.YawDeg * rotationDir,
+					   shape);
 	}
 }
