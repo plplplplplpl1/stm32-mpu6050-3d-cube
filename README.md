@@ -12,10 +12,11 @@
 |---------|------|
 | **Software I2C** bit-banging to drive MPU6050 | **软件 I2C** 驱动 MPU6050，读取原始加速度和角速度 |
 | **Complementary filter** for real-time Pitch / Roll / Yaw | **互补滤波** 实时解算姿态角 |
-| **3D wireframe cube** via perspective projection on OLED 128×64 | **3D 线框魔方** 透视投影到 OLED 128×64 |
+| **6 wireframe polyhedra** (cube, octahedron, tetrahedron, dodecahedron, icosahedron, cuboctahedron) via perspective projection on OLED 128×64 | **6种线框多面体**（正方体、八面体、四面体、十二面体、二十面体、立方八面体）透视投影到 OLED 128×64 |
 | **Hardware timer TIM2** for accurate frame time measurement | **硬件定时器 TIM2** 精确测量帧时间，姿态积分与真实时间同步 |
 | **KEY1** — toggle rotation direction (normal / reverse) | **KEY1** — 切换旋转方向（正向/反向） |
 | **KEY2** — recalibrate gyroscope zero-bias | **KEY2** — 陀螺仪零偏重标定 |
+| **KEY3 (PA7)** — cycle through 6 polyhedra | **KEY3 (PA7)** — 循环切换6种多面体 |
 | **Power-on self-test** for MPU6050 connection | **上电自检**，检测 MPU6050 连接状态 |
 
 ## Hardware Requirements / 硬件需求
@@ -30,12 +31,15 @@
 
 ## Pin Connections / 引脚连接
 
-| STM32 | MPU6050 | OLED |
-|-------|---------|------|
-| PB10 | SCL | - |
-| PB11 | SDA | - |
-| PB3  | -   | SCL |
-| PB5  | -   | SDA |
+| STM32 | MPU6050 | OLED | Button |
+|-------|---------|------|--------|
+| PB10 | SCL | - | - |
+| PB11 | SDA | - | - |
+| PB8  | -   | SCL | - |
+| PB9  | -   | SDA | - |
+| PB1  | -   | -   | KEY1 |
+| PB12 | -   | -   | KEY2 |
+| PA7  | -   | -   | KEY3 |
 
 > If your wiring differs, adjust the pin definitions in the source code.
 > 如果接线不同，请在源码中修改引脚定义。
@@ -94,6 +98,7 @@ Rotate the board — the 3D cube on the OLED follows in real time.
 |--------------|--------------|---------------------|
 | **KEY1** | Toggle direction / 切换方向 | Shows / 显示 `方向:NORMAL / REVERSE`（400ms） |
 | **KEY2** | Recalibrate gyro / 重标定陀螺仪 | Shows / 显示 `校准中...` → `完成` |
+| **KEY3** | Cycle shape / 切换多面体 | Shows / 显示 `CUBE / OCTA / TETRA / DODEC / ICOSA / CUBOCT`（400ms） |
 
 > Recalibrate whenever you notice drift. Place the board flat and still during calibration.
 > 发现漂移时可随时按 KEY2 重新标定，标定时请保持板子静止水平。
