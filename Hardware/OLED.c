@@ -498,3 +498,44 @@ void OLED_DrawLine(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t IsOn)
 		}
 	}
 }
+
+
+/**
+  * @brief  OLED画线（灰度/点画线）
+  * @param  X0, Y0, X1, Y1 线段端点坐标
+  * @param  level 灰度等级：1=最暗，15=最亮（实线）
+  * @retval 无
+  */
+void OLED_DrawLineGray(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t level)
+{
+	int16_t dx = X1 - X0;
+	int16_t dy = Y1 - Y0;
+	int16_t sx = (dx >= 0) ? 1 : -1;
+	int16_t sy = (dy >= 0) ? 1 : -1;
+	int16_t err, e2;
+	uint16_t counter = 0;
+	uint8_t step;
+
+	if (level >= 15)
+	{
+		OLED_DrawLine(X0, Y0, X1, Y1, 1);
+		return;
+	}
+	if (level == 0) return;
+
+	dx = (dx >= 0) ? dx : -dx;
+	dy = (dy >= 0) ? dy : -dy;
+	err = ((dx > dy) ? dx : -dy) / 2;
+	step = 16 / level;
+	if (step < 2) step = 2;
+
+	while (1)
+	{
+		if ((counter++ % step) == 0)
+			OLED_DrawPoint(X0, Y0, 1);
+		if (X0 == X1 && Y0 == Y1) break;
+		e2 = err;
+		if (e2 > -dx) { err -= dy; X0 += sx; }
+		if (e2 < dy)  { err += dx; Y0 += sy; }
+	}
+}

@@ -15,6 +15,7 @@ void OLED_ShowChinese16(uint8_t Line, uint8_t Column, const uint8_t *Font16x16);
 void OLED_ClearBuffer(void);
 void OLED_DrawPoint(int16_t X, int16_t Y, uint8_t IsOn);
 void OLED_DrawLine(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t IsOn);
+void OLED_DrawLineGray(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t level);
 void OLED_Refresh(void);
 
 #endif

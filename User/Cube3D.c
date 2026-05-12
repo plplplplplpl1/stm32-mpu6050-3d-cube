@@ -425,6 +425,7 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 	const Vec3f_t *vertices;
 	const uint8_t (*edges)[2];
 	Vec2i_t projected[HYPERBOLIC_MAX_VTX];
+	float zBuffer[HYPERBOLIC_MAX_VTX];
 	const Vec4f_t *verts4D = 0;
 	uint8_t idx0, idx1;
 	int16_t sumX = 0;
@@ -680,6 +681,7 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 			v3.z *= autoScale;
 			v3 = RotateXYZ(v3, pitchDeg, rollDeg, yawDeg);
 			projected[i] = ProjectToScreen(v3);
+			zBuffer[i] = v3.z;
 			sumX += projected[i].x;
 			sumY += projected[i].y;
 		}
@@ -688,7 +690,9 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 	{
 		for (i = 0; i < vtxCount; i++)
 		{
-			projected[i] = ProjectToScreen(RotateXYZ(vertices[i], pitchDeg, rollDeg, yawDeg));
+			Vec3f_t r3 = RotateXYZ(vertices[i], pitchDeg, rollDeg, yawDeg);
+			projected[i] = ProjectToScreen(r3);
+			zBuffer[i] = r3.z;
 			sumX += projected[i].x;
 			sumY += projected[i].y;
 		}
@@ -702,12 +706,41 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 		projected[i].y += offsetY;
 	}
 
-	for (i = 0; i < edgeCount; i++)
+	/* Depth-sorted edge rendering: 4 passes back-to-front with gray levels */
 	{
-		idx0 = edges[i][0];
-		idx1 = edges[i][1];
-		OLED_DrawLine(projected[idx0].x, projected[idx0].y,
-					  projected[idx1].x, projected[idx1].y, 1);
+		float minZ = 1e10f, maxZ = -1e10f;
+		uint8_t pass, cat;
+		int8_t levelMap[4];
+
+		for (i = 0; i < vtxCount; i++)
+		{
+			if (zBuffer[i] < minZ) minZ = zBuffer[i];
+			if (zBuffer[i] > maxZ) maxZ = zBuffer[i];
+		}
+
+		levelMap[0] = 15;
+		levelMap[1] = 6;
+		levelMap[2] = 3;
+		levelMap[3] = 2;
+
+		for (pass = 3; pass < 4; pass--)
+		{
+			for (i = 0; i < edgeCount; i++)
+			{
+				idx0 = edges[i][0];
+				idx1 = edges[i][1];
+				float depth = (zBuffer[idx0] + zBuffer[idx1]) * 0.5f;
+				float t = (depth - minZ) / (maxZ - minZ + 0.001f);
+				cat = (uint8_t)(t * 3.0f);
+				if (cat > 3) cat = 3;
+				if (cat == pass)
+				{
+					OLED_DrawLineGray(projected[idx0].x, projected[idx0].y,
+										projected[idx1].x, projected[idx1].y,
+										(uint8_t)levelMap[cat]);
+				}
+			}
+		}
 	}
 
 	OLED_Refresh();
