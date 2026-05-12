@@ -12,11 +12,14 @@
 |---------|------|
 | **Software I2C** bit-banging to drive MPU6050 | **软件 I2C** 驱动 MPU6050，读取原始加速度和角速度 |
 | **Complementary filter** for real-time Pitch / Roll / Yaw | **互补滤波** 实时解算姿态角 |
-| **6 wireframe polyhedra** (cube, octahedron, tetrahedron, dodecahedron, icosahedron, cuboctahedron) via perspective projection on OLED 128×64 | **6种线框多面体**（正方体、八面体、四面体、十二面体、二十面体、立方八面体）透视投影到 OLED 128×64 |
+| **31 wireframe polyhedra** — 5 Platonic, 3 Archimedean/stellated, 12 hyperbolic tilings {p,q}, 5 convex 4D polytopes (5-cell, tesseract, 16/24/600-cell), 4 Schläfli-Hess star 4D polytopes — via perspective projection on OLED 128×64 | **31种线框多面体** — 5种柏拉图立体、3种阿基米德/星形、12种双曲镶嵌{p,q}、5种凸4D正多胞体（5-cell/超立方体/16/24/600胞体）、4种Schläfli-Hess 4D星形多胞体 — 透视投影到 OLED 128×64 |
 | **Hardware timer TIM2** for accurate frame time measurement | **硬件定时器 TIM2** 精确测量帧时间，姿态积分与真实时间同步 |
+| **4D auto-rotation** — continuous rotation in XW and YZ planes for 4D polytopes | **4D 自动旋转** — 4D 多胞体在 XW、YZ 平面持续旋转 |
+| **Auto-scale** — 4D shapes automatically sized to fit the screen | **自动缩放** — 4D 图形自动适配屏幕大小 |
 | **KEY1** — toggle rotation direction (normal / reverse) | **KEY1** — 切换旋转方向（正向/反向） |
 | **KEY2** — recalibrate gyroscope zero-bias | **KEY2** — 陀螺仪零偏重标定 |
-| **KEY3 (PA7)** — cycle through 6 polyhedra | **KEY3 (PA7)** — 循环切换6种多面体 |
+| **KEY3 (PA6)** — cycle shapes forward (up) | **KEY3 (PA6)** — 向上切换显示图形 |
+| **KEY4 (PA4)** — cycle shapes backward (down) | **KEY4 (PA4)** — 向下切换显示图形 |
 | **Power-on self-test** for MPU6050 connection | **上电自检**，检测 MPU6050 连接状态 |
 
 ## Hardware Requirements / 硬件需求
@@ -26,8 +29,7 @@
 | MCU | STM32F103C8T6 |
 | Sensor / 传感器 | MPU6050 (6-axis / 六轴) |
 | Display / 显示屏 | 0.96" OLED 128×64 |
-| Buttons / 按键 | 2x (KEY1, KEY2) |
-| LED | 1x (status / 状态指示) |
+| Buttons / 按键 | 4x (KEY1, KEY2, KEY3-PA6, KEY4-PA4) |
 
 ## Pin Connections / 引脚连接
 
@@ -39,7 +41,8 @@
 | PB9  | -   | SDA | - |
 | PB1  | -   | -   | KEY1 |
 | PB12 | -   | -   | KEY2 |
-| PA7  | -   | -   | KEY3 |
+| PA6  | -   | -   | KEY3 |
+| PA4  | -   | -   | KEY4 |
 
 > If your wiring differs, adjust the pin definitions in the source code.
 > 如果接线不同，请在源码中修改引脚定义。
@@ -63,8 +66,11 @@ Open the project with **Keil uVision** (`Project.uvprojx`), build, and flash to 
 
 ### 2. Power On / 上电启动
 
-Once powered, the OLED displays the MPU6050 ID:
-上电后 OLED 显示 MPU6050 的 ID：
+Once powered, the board first auto-calibrates the gyroscope (~2 seconds, 300 samples). **Keep the board stationary and flat.**
+上电后先自动进行陀螺仪零偏标定（约2秒、采样300次）。**请将板子水平静止放置。**
+
+Then the OLED shows the MPU6050 ID:
+然后 OLED 显示 MPU6050 的 ID：
 
 ```
 MPU ID:68
@@ -74,31 +80,19 @@ MPU OK
 If you see `MPU ERR / CHECK WIRE`, check the wiring between STM32 and MPU6050.
 如果显示 `MPU ERR / CHECK WIRE`，请检查 MPU6050 的接线。
 
-### 3. Auto Calibration / 自动校准
+### 3. Normal Operation / 正常运行
 
-After self-test, the board auto-calibrates the gyroscope. **Keep the board stationary and flat.**
-自检后自动进入陀螺仪零偏标定，**请将板子水平静止放置**。
+After self-test, the 3D cube appears on the OLED. Rotate the board — the cube follows in real time.
+自检通过后，OLED 显示 3D 魔方。转动开发板，魔方实时同步旋转。
 
-OLED shows / OLED 显示：
-```
-校准中...
-```
-
-Calibration takes ~2 seconds (300 samples). When finished, it shows `完成` and the cube appears.
-标定约需 2 秒（采样 300 次），完成后显示 `完成`，魔方出现。
-
-### 4. Normal Operation / 正常运行
-
-Rotate the board — the 3D cube on the OLED follows in real time.
-转动开发板，OLED 上的 3D 魔方实时同步旋转。
-
-### 5. Button Controls / 按键操作
+### 4. Button Controls / 按键操作
 
 | Button / 按键 | Action / 功能 | OLED Feedback / 反馈 |
 |--------------|--------------|---------------------|
 | **KEY1** | Toggle direction / 切换方向 | Shows / 显示 `方向:NORMAL / REVERSE`（400ms） |
 | **KEY2** | Recalibrate gyro / 重标定陀螺仪 | Shows / 显示 `校准中...` → `完成` |
-| **KEY3** | Cycle shape / 切换多面体 | Shows / 显示 `CUBE / OCTA / TETRA / DODEC / ICOSA / CUBOCT`（400ms） |
+| **KEY3 (PA6)** | Cycle shape up / 向上切换图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
+| **KEY4 (PA4)** | Cycle shape down / 向下切换图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
 
 > Recalibrate whenever you notice drift. Place the board flat and still during calibration.
 > 发现漂移时可随时按 KEY2 重新标定，标定时请保持板子静止水平。
@@ -111,3 +105,6 @@ Rotate the board — the 3D cube on the OLED follows in real time.
 | **Zero-bias Calibration** | Average 300 stationary samples to cancel gyro offset and drift | 静止采样 300 次取平均，消除零偏与温漂 |
 | **3D Rotation** | Right-handed rotation matrices (X → Y → Z) | 右手系标准旋转矩阵依次绕 XYZ 轴旋转 |
 | **Perspective Projection** | Camera-distance-based scaling with centroid auto-centering | 基于相机距离的缩放投影，重心自动居中 |
+| **4D→3D→2D Pipeline** | 4D rotation (XW+YZ), perspective project to 3D, 3D rotate, then project to screen with auto-scale | 4D旋转、透视投影到3D、3D旋转、再投影到屏幕，自动缩放适配 |
+| **4D Auto-rotation** | XW plane at 15°/s, YZ plane at 10°/s, independent of MPU rotation | XW平面15°/s、YZ平面10°/s持续自动旋转，与MPU姿态角相互独立 |
+| **Hyperbolic Tessellation {p,q}** | Regular tiling of the hyperbolic plane mapped via stereographic projection to 3D | 双曲正多边形镶嵌{p,q}，经球极投影映射到3D空间 |

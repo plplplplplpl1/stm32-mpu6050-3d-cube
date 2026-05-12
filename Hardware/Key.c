@@ -19,30 +19,32 @@ void Key_Init(void)
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);						//将PB1和PB12引脚初始化为上拉输入
 
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_7;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);						//将PA7引脚初始化为上拉输入
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_4;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);						//将PA6、PA4引脚初始化为上拉输入
 }
 
 /**
   * 函    数：按键获取键码（非阻塞）
   * 参    数：无
-  * 返 回 值：按下按键的键码值，范围：0~3，返回0代表没有按键按下
+  * 返 回 值：按下按键的键码值，范围：0~4，返回0代表没有按键按下
   * 注意事项：非阻塞，不会卡住主循环。每次调用只检测一次，不会重复触发。
   */
 uint8_t Key_GetNum(void)
 {
 	uint8_t KeyNum = 0;
-	static uint8_t prev1 = 1, prev7 = 1, prev12 = 1;
-	static uint8_t released1 = 1, released7 = 1, released12 = 1;
-	uint8_t cur1, cur7, cur12;
+	static uint8_t prev1 = 1, prev6 = 1, prev12 = 1, prev4 = 1;
+	static uint8_t released1 = 1, released6 = 1, released12 = 1, released4 = 1;
+	uint8_t cur1, cur6, cur12, cur4;
 
 	cur1 = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_1);
-	cur7 = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7);
+	cur6 = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6);
+	cur4 = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4);
 	cur12 = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_12);
 
 	/* 检测到高电平（松手），标记为可再次触发 */
 	if (cur1 == 1) released1 = 1;
-	if (cur7 == 1) released7 = 1;
+	if (cur6 == 1) released6 = 1;
+	if (cur4 == 1) released4 = 1;
 	if (cur12 == 1) released12 = 1;
 
 	/* 按键1（PB1）：下降沿触发，且前一次已松手 */
@@ -56,14 +58,14 @@ uint8_t Key_GetNum(void)
 		}
 	}
 
-	/* 按键3（PA7）：下降沿触发，且前一次已松手 */
-	if (prev7 == 1 && cur7 == 0 && released7)
+	/* 按键3（PA6）：下降沿触发，且前一次已松手 */
+	if (prev6 == 1 && cur6 == 0 && released6)
 	{
 		Delay_ms(20);											//延时消抖
-		if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0)		//确认仍按下
+		if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6) == 0)		//确认仍按下
 		{
 			KeyNum = 3;
-			released7 = 0;										//标记已触发，等待松手
+			released6 = 0;										//标记已触发，等待松手
 		}
 	}
 
@@ -77,9 +79,21 @@ uint8_t Key_GetNum(void)
 			released12 = 0;										//标记已触发，等待松手
 		}
 	}
+	/* 按键4（PA4）：下降沿触发，且前一次已松手 */
+	if (prev4 == 1 && cur4 == 0 && released4)
+	{
+		Delay_ms(20);										//延时消抖
+		if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0)		//确认仍按下
+		{
+			KeyNum = 4;
+			released4 = 0;									//标记已触发，等待松手
+		}
+	}
+
 
 	prev1 = cur1;
-	prev7 = cur7;
+	prev6 = cur6;
+	prev4 = cur4;
 	prev12 = cur12;
 
 	return KeyNum;												//返回键码值，无按键则返回0

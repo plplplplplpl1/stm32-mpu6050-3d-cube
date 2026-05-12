@@ -1,4 +1,6 @@
 #include "Cube3D.h"
+#include "Cube3D_Hyperbolic.h"
+#include "Cube3D_4D.h"
 #include "OLED.h"
 #include <math.h>
 
@@ -14,13 +16,6 @@
 #define HALF_SIZE      18.0f
 /* 八面体放大到与正方体相同的视觉大小（正方体角点距 = 18*√3 ≈ 31.18） */
 #define OCT_HALF_SIZE  31.18f
-
-typedef struct
-{
-	float x;
-	float y;
-	float z;
-} Vec3f_t;
 
 typedef struct
 {
@@ -219,6 +214,117 @@ static const uint8_t kCoEdges[CO_EDGE_COUNT][2] =
 	{7,9}, {7,11}
 };
 
+/* ========== 截角四面体：12顶点、18边 ========== */
+#define TT_VTX_COUNT  12
+#define TT_EDGE_COUNT 18
+
+/*
+ * 坐标：(±3, ±1, ±1) 的所有偶置换，要求符号变化次数为偶数
+ * 缩放使最大顶点距与正方体角点距一致：31.18 / √11 ≈ 9.4
+ */
+#define TT_HALF_SIZE  9.4f
+
+static const Vec3f_t kTTVertices[TT_VTX_COUNT] =
+{
+	{ 3.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE},
+	{ 1.0f*TT_HALF_SIZE,  3.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE},
+	{ 1.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE,  3.0f*TT_HALF_SIZE},
+	{ 3.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE},
+	{ 1.0f*TT_HALF_SIZE, -3.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE},
+	{ 1.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE, -3.0f*TT_HALF_SIZE},
+	{-3.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE},
+	{-1.0f*TT_HALF_SIZE,  3.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE},
+	{-1.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE, -3.0f*TT_HALF_SIZE},
+	{-3.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE},
+	{-1.0f*TT_HALF_SIZE, -3.0f*TT_HALF_SIZE,  1.0f*TT_HALF_SIZE},
+	{-1.0f*TT_HALF_SIZE, -1.0f*TT_HALF_SIZE,  3.0f*TT_HALF_SIZE}
+};
+
+/* 相邻顶点恰好共享一个坐标值（同位置、同符号），其余相差 2 */
+static const uint8_t kTTEdges[TT_EDGE_COUNT][2] =
+{
+	{0,1}, {0,2}, {0,3},
+	{1,2}, {1,7},
+	{2,11},
+	{3,4}, {3,5},
+	{4,5}, {4,10},
+	{5,8},
+	{6,7}, {6,8}, {6,9},
+	{7,10},
+	{8,11},
+	{9,10}, {9,11}
+};
+
+/* ========== 小星星十二面体：12顶点、30边 ========== */
+#define SS_VTX_COUNT  12
+#define SS_EDGE_COUNT 30
+
+/* 与二十面体共用顶点坐标，但边连接不同（互补于二十面体边集） */
+#define SS_HALF_SIZE  (HALF_SIZE * 0.91058f)
+
+static const Vec3f_t kSSVertices[SS_VTX_COUNT] =
+{
+	/*  0- 3: (0, ±1, ±φ) */
+	{ 0.0f,           SS_HALF_SIZE,      SS_HALF_SIZE*PHI},
+	{ 0.0f,           SS_HALF_SIZE,     -SS_HALF_SIZE*PHI},
+	{ 0.0f,          -SS_HALF_SIZE,      SS_HALF_SIZE*PHI},
+	{ 0.0f,          -SS_HALF_SIZE,     -SS_HALF_SIZE*PHI},
+	/*  4- 7: (±1, ±φ, 0) */
+	{ SS_HALF_SIZE,   SS_HALF_SIZE*PHI,  0.0f              },
+	{ SS_HALF_SIZE,  -SS_HALF_SIZE*PHI,  0.0f              },
+	{-SS_HALF_SIZE,   SS_HALF_SIZE*PHI,  0.0f              },
+	{-SS_HALF_SIZE,  -SS_HALF_SIZE*PHI,  0.0f              },
+	/*  8-11: (±φ, 0, ±1) */
+	{ SS_HALF_SIZE*PHI,  0.0f,            SS_HALF_SIZE     },
+	{ SS_HALF_SIZE*PHI,  0.0f,           -SS_HALF_SIZE     },
+	{-SS_HALF_SIZE*PHI,  0.0f,            SS_HALF_SIZE     },
+	{-SS_HALF_SIZE*PHI,  0.0f,           -SS_HALF_SIZE     }
+};
+
+/*
+ * 边连接 = K₁₂ 完全图中除去二十面体的30条边和6对对径点，
+ * 每条边对应五角星面的一个"跳跃"连接（隔一个顶点）。
+ */
+static const uint8_t kSSEdges[SS_EDGE_COUNT][2] =
+{
+	{0,1}, {0,5}, {0,7}, {0,9}, {0,11},
+	{1,5}, {1,7}, {1,8}, {1,10},
+	{2,3}, {2,4}, {2,6}, {2,9}, {2,11},
+	{3,4}, {3,6}, {3,8}, {3,10},
+	{4,5}, {4,10}, {4,11},
+	{5,10}, {5,11},
+	{6,7}, {6,8}, {6,9},
+	{7,8}, {7,9},
+	{8,10},
+	{9,11}
+};
+
+/* ========== 大星形十二面体：20顶点、30边 ========== */
+#define GSE_VTX_COUNT  20
+#define GSE_EDGE_COUNT 30
+
+/*
+ * 大星形十二面体 {5/2, 3}，开普勒-庞索多面体。
+ * 与正十二面体共用20个顶点，但边连接不同：
+ * 每个面为五角星形，由12个五角星面构成，
+ * 每顶点连接3条边。计算方式：对十二面体的12个
+ * 五边形面平面取最近的5个异面顶点，以五角星模式连接。
+ */
+static const uint8_t kGSEEdges[GSE_EDGE_COUNT][2] =
+{
+	{0,11}, {0,15}, {0,19},
+	{1,10}, {1,14}, {1,19},
+	{2,9},  {2,15}, {2,18},
+	{3,8},  {3,14}, {3,18},
+	{4,11}, {4,13}, {4,17},
+	{5,10}, {5,12}, {5,17},
+	{6,9},  {6,13}, {6,16},
+	{7,8},  {7,12}, {7,16},
+	{8,9},  {10,11},
+	{12,14},{13,15},
+	{16,17},{18,19}
+};
+
 /*
  * 三维旋转：依次绕 X轴、Y轴、Z轴 旋转
  *   参数 pitchDeg — 绕 X 轴旋转角
@@ -274,14 +380,52 @@ static Vec2i_t ProjectToScreen(Vec3f_t v)
 	return p;
 }
 
-void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape)
+/* ========== 4D 旋转与投影辅助函数 ========== */
+
+static Vec4f_t Rotate4D_XW(Vec4f_t v, float deg)
+{
+	float c = cosf(deg * DEG_TO_RAD);
+	float s = sinf(deg * DEG_TO_RAD);
+	Vec4f_t r;
+	r.x = v.x * c - v.w * s;
+	r.y = v.y;
+	r.z = v.z;
+	r.w = v.x * s + v.w * c;
+	return r;
+}
+
+static Vec4f_t Rotate4D_YZ(Vec4f_t v, float deg)
+{
+	float c = cosf(deg * DEG_TO_RAD);
+	float s = sinf(deg * DEG_TO_RAD);
+	Vec4f_t r;
+	r.x = v.x;
+	r.y = v.y * c - v.z * s;
+	r.z = v.y * s + v.z * c;
+	r.w = v.w;
+	return r;
+}
+
+static Vec3f_t Project4DTo3D(Vec4f_t v)
+{
+	/* 4D→3D 透视投影：观察距离沿 W 轴为 3.0 单位 */
+	const float d = 3.0f;
+	float scale = d / (d + v.w);
+	Vec3f_t r;
+	r.x = v.x * scale;
+	r.y = v.y * scale;
+	r.z = v.z * scale;
+	return r;
+}
+
+void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, float dtSec)
 {
 	uint8_t i;
 	uint8_t vtxCount, edgeCount;
 	const Vec3f_t *vertices;
 	const uint8_t (*edges)[2];
-	Vec3f_t rotated[20];    /* 最大顶点数（十二面体20个） */
-	Vec2i_t projected[20];
+	Vec2i_t projected[HYPERBOLIC_MAX_VTX];
+	const Vec4f_t *verts4D = 0;
 	uint8_t idx0, idx1;
 	int16_t sumX = 0;
 	int16_t sumY = 0;
@@ -323,6 +467,181 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape)
 		vtxCount = CO_VTX_COUNT;
 		edgeCount = CO_EDGE_COUNT;
 	}
+	else if (shape == SHAPE_TRUNCATED_TETRA)
+	{
+		vertices = kTTVertices;
+		edges    = kTTEdges;
+		vtxCount = TT_VTX_COUNT;
+		edgeCount = TT_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_SMALL_STELLATED)
+	{
+		vertices = kSSVertices;
+		edges    = kSSEdges;
+		vtxCount = SS_VTX_COUNT;
+		edgeCount = SS_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_GREAT_STELLATED)
+	{
+		vertices = kDodVertices;
+		edges    = kGSEEdges;
+		vtxCount = GSE_VTX_COUNT;
+		edgeCount = GSE_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H3_7)
+	{
+		vertices = kH3_7Vertices;
+		edges    = kH3_7Edges;
+		vtxCount = H3_7_VTX_COUNT;
+		edgeCount = H3_7_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H3_8)
+	{
+		vertices = kH3_8Vertices;
+		edges    = kH3_8Edges;
+		vtxCount = H3_8_VTX_COUNT;
+		edgeCount = H3_8_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H4_5)
+	{
+		vertices = kH4_5Vertices;
+		edges    = kH4_5Edges;
+		vtxCount = H4_5_VTX_COUNT;
+		edgeCount = H4_5_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H5_4)
+	{
+		vertices = kH5_4Vertices;
+		edges    = kH5_4Edges;
+		vtxCount = H5_4_VTX_COUNT;
+		edgeCount = H5_4_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H4_6)
+	{
+		vertices = kH4_6Vertices;
+		edges    = kH4_6Edges;
+		vtxCount = H4_6_VTX_COUNT;
+		edgeCount = H4_6_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H6_4)
+	{
+		vertices = kH6_4Vertices;
+		edges    = kH6_4Edges;
+		vtxCount = H6_4_VTX_COUNT;
+		edgeCount = H6_4_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H5_5)
+	{
+		vertices = kH5_5Vertices;
+		edges    = kH5_5Edges;
+		vtxCount = H5_5_VTX_COUNT;
+		edgeCount = H5_5_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H5_6)
+	{
+		vertices = kH5_6Vertices;
+		edges    = kH5_6Edges;
+		vtxCount = H5_6_VTX_COUNT;
+		edgeCount = H5_6_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H6_5)
+	{
+		vertices = kH6_5Vertices;
+		edges    = kH6_5Edges;
+		vtxCount = H6_5_VTX_COUNT;
+		edgeCount = H6_5_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H7_3)
+	{
+		vertices = kH7_3Vertices;
+		edges    = kH7_3Edges;
+		vtxCount = H7_3_VTX_COUNT;
+		edgeCount = H7_3_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H8_3)
+	{
+		vertices = kH8_3Vertices;
+		edges    = kH8_3Edges;
+		vtxCount = H8_3_VTX_COUNT;
+		edgeCount = H8_3_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H3_10)
+	{
+		vertices = kH3_10Vertices;
+		edges    = kH3_10Edges;
+		vtxCount = H3_10_VTX_COUNT;
+		edgeCount = H3_10_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_H10_3)
+	{
+		vertices = kH10_3Vertices;
+		edges    = kH10_3Edges;
+		vtxCount = H10_3_VTX_COUNT;
+		edgeCount = H10_3_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_5_CELL)
+	{
+		verts4D  = kP5_CELLVertices;
+		edges    = kP5_CELLEdges;
+		vtxCount = P5_CELL_VTX_COUNT;
+		edgeCount = P5_CELL_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_TESSERACT)
+	{
+		verts4D  = kTESSERACTVertices;
+		edges    = kTESSERACTEdges;
+		vtxCount = TESSERACT_VTX_COUNT;
+		edgeCount = TESSERACT_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_16_CELL)
+	{
+		verts4D  = kP16_CELLVertices;
+		edges    = kP16_CELLEdges;
+		vtxCount = P16_CELL_VTX_COUNT;
+		edgeCount = P16_CELL_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_24_CELL)
+	{
+		verts4D  = kP24_CELLVertices;
+		edges    = kP24_CELLEdges;
+		vtxCount = P24_CELL_VTX_COUNT;
+		edgeCount = P24_CELL_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_600_CELL)
+	{
+		verts4D  = kP600_CELLVertices;
+		edges    = kP600_CELLEdges;
+		vtxCount = P600_CELL_VTX_COUNT;
+		edgeCount = P600_CELL_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_P600_STAR1)
+	{
+		verts4D  = kP600_STAR1Vertices;
+		edges    = kP600_STAR1Edges;
+		vtxCount = P600_STAR1_VTX_COUNT;
+		edgeCount = P600_STAR1_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_P600_STAR2)
+	{
+		verts4D  = kP600_STAR2Vertices;
+		edges    = kP600_STAR2Edges;
+		vtxCount = P600_STAR2_VTX_COUNT;
+		edgeCount = P600_STAR2_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_P600_STAR3)
+	{
+		verts4D  = kP600_STAR3Vertices;
+		edges    = kP600_STAR3Edges;
+		vtxCount = P600_STAR3_VTX_COUNT;
+		edgeCount = P600_STAR3_EDGE_COUNT;
+	}
+	else if (shape == SHAPE_P600_STAR4)
+	{
+		verts4D  = kP600_STAR4Vertices;
+		edges    = kP600_STAR4Edges;
+		vtxCount = P600_STAR4_VTX_COUNT;
+		edgeCount = P600_STAR4_EDGE_COUNT;
+	}
 	else
 	{
 		vertices = kCubeVertices;
@@ -330,19 +649,51 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape)
 		vtxCount = CUBE_VTX_COUNT;
 		edgeCount = CUBE_EDGE_COUNT;
 	}
-
-	/* 每帧仅清缓冲，最后统一刷新，避免"先黑屏再绘图"的闪烁 */
 	OLED_ClearBuffer();
 
-	for (i = 0; i < vtxCount; i++)
+	/* 4D auto-rotation angles accumulate from real frame time */
+	static float cellAngleXW = 0.0f;
+	static float cellAngleYZ = 0.0f;
+	if (verts4D)
 	{
-		rotated[i] = RotateXYZ(vertices[i], pitchDeg, rollDeg, yawDeg);
-		projected[i] = ProjectToScreen(rotated[i]);
-		sumX += projected[i].x;
-		sumY += projected[i].y;
+		cellAngleXW += dtSec * 15.0f;
+		cellAngleYZ += dtSec * 10.0f;
+		/* Pass 1: compute bounding sphere radius after 4D projection */
+		float maxRadSq = 0.0f;
+		for (i = 0; i < vtxCount; i++)
+		{
+			Vec4f_t r4 = Rotate4D_XW(verts4D[i], cellAngleXW);
+			r4 = Rotate4D_YZ(r4, cellAngleYZ);
+			Vec3f_t v3 = Project4DTo3D(r4);
+			float r2 = v3.x*v3.x + v3.y*v3.y + v3.z*v3.z;
+			if (r2 > maxRadSq) maxRadSq = r2;
+		}
+		float autoScale = (maxRadSq > 0.001f) ? (22.0f / sqrtf(maxRadSq)) : 22.0f;
+		/* Pass 2: render with auto-scale to fit screen */
+		for (i = 0; i < vtxCount; i++)
+		{
+			Vec4f_t r4 = Rotate4D_XW(verts4D[i], cellAngleXW);
+			r4 = Rotate4D_YZ(r4, cellAngleYZ);
+			Vec3f_t v3 = Project4DTo3D(r4);
+			v3.x *= autoScale;
+			v3.y *= autoScale;
+			v3.z *= autoScale;
+			v3 = RotateXYZ(v3, pitchDeg, rollDeg, yawDeg);
+			projected[i] = ProjectToScreen(v3);
+			sumX += projected[i].x;
+			sumY += projected[i].y;
+		}
+	}
+	else
+	{
+		for (i = 0; i < vtxCount; i++)
+		{
+			projected[i] = ProjectToScreen(RotateXYZ(vertices[i], pitchDeg, rollDeg, yawDeg));
+			sumX += projected[i].x;
+			sumY += projected[i].y;
+		}
 	}
 
-	/* 将投影重心锁定在屏幕中心，防止整体漂移出画面 */
 	offsetX = (int16_t)SCREEN_CX - (sumX / (int16_t)vtxCount);
 	offsetY = (int16_t)SCREEN_CY - (sumY / (int16_t)vtxCount);
 	for (i = 0; i < vtxCount; i++)

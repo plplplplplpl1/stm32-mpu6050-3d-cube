@@ -100,7 +100,7 @@ static void Timer2_Init(void)
 {
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 	TIM2->PSC = 72 - 1;			// 72MHz / 72 = 1MHz
-	TIM2->ARR = 0xFFFFFFFF;		// 32位最大计数值
+	TIM2->ARR = 0xFFFFFFFFUL;		/* 32-bit max reload */// 32位最大计数值
 	TIM2->CR1 |= TIM_CR1_CEN;	// 启动计数
 }
 
@@ -169,17 +169,82 @@ int main(void)
 			dirChanged = 1;
 		}
 
-		/* 按键3（PA7）：循环切换显示图形 */
+		/* 按键3（PA6）：向上切换显示图形 */
 		if (keyNum == 3)
 		{
-			shape = (shape + 1) % 6;
+			shape = (shape + 1) % TOTAL_SHAPE_COUNT;
 			OLED_Clear();
 			if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
 			else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
 			else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
 			else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
 			else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
-			else                                 OLED_ShowString(2, 4, "CUBOCT");
+			else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
+			else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
+			else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
+			else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
+			else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
+			else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
+			else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
+			else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
+			else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
+			else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
+			else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
+			else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
+			else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
+			else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
+			else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
+			else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
+			else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
+			else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
+			else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
+			else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
+			else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
+			else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
+			else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
+			else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
+			else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
+			else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
+			Delay_ms(400);
+			lastTick = TIM2->CNT;
+		}
+
+		/* 按键4（PA4）：向下切换显示图形 */
+		if (keyNum == 4)
+		{
+			shape = (shape + TOTAL_SHAPE_COUNT - 1) % TOTAL_SHAPE_COUNT;
+			OLED_Clear();
+			if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
+			else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
+			else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
+			else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
+			else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
+			else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
+			else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
+			else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
+			else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
+			else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
+			else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
+			else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
+			else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
+			else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
+			else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
+			else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
+			else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
+			else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
+			else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
+			else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
+			else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
+			else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
+			else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
+			else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
+			else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
+			else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
+			else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
+			else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
+			else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
+			else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
+			else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
 			Delay_ms(400);
 			lastTick = TIM2->CNT;
 		}
@@ -224,6 +289,6 @@ int main(void)
 		Cube3D_Render(-attitude.PitchDeg * rotationDir,
 					  -attitude.RollDeg * rotationDir,
 					   attitude.YawDeg * rotationDir,
-					   shape);
+					   shape, dtSec);
 	}
 }
