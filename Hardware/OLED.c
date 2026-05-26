@@ -3,131 +3,139 @@
 #include "Delay.h"
 #include <string.h>
 
-/*引脚配置*/
-#define OLED_W_SCL(x)		GPIO_WriteBit(GPIOB, GPIO_Pin_8, (BitAction)(x))
-#define OLED_W_SDA(x)		GPIO_WriteBit(GPIOB, GPIO_Pin_9, (BitAction)(x))
+/* 硬件I2C1：PB6=SCL, PB7=SDA */
+#define OLED_I2C              I2C1
+#define OLED_SLAVE_ADDR       0x78
+#define I2C_TIMEOUT           100000UL
 
 /* 图形缓冲区：8页 * 128列，对应128x64像素 */
 static uint8_t OLED_GRAM[8][128];
 
-/* 前向声明，避免在OLED_Clear中被隐式声明 */
+/* 前向声明 */
 void OLED_Refresh(void);
 
-/*引脚初始化*/
-void OLED_I2C_Init(void)
-{
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	
-	GPIO_InitTypeDef GPIO_InitStructure;
- 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8;
- 	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9;
- 	GPIO_Init(GPIOB, &GPIO_InitStructure);
-	
-	OLED_W_SCL(1);
-	OLED_W_SDA(1);
-}
-
 /**
-  * @brief  I2C开始
-  * @param  无
-  * @retval 无
+  * @brief  硬件I2C等待事件（带超时保护，防止总线卡死）
+  * @param  event I2C事件宏
+  * @retval 1=成功，0=超时
   */
-void OLED_I2C_Start(void)
+static uint8_t OLED_I2C_WaitEvent(uint32_t event)
 {
-	OLED_W_SDA(1);
-	OLED_W_SCL(1);
-	Delay_us(2);
-	OLED_W_SDA(0);
-	Delay_us(2);
-	OLED_W_SCL(0);
-}
-
-/**
-  * @brief  I2C停止
-  * @param  无
-  * @retval 无
-  */
-void OLED_I2C_Stop(void)
-{
-	OLED_W_SDA(0);
-	OLED_W_SCL(1);
-	Delay_us(2);
-	OLED_W_SDA(1);
-	Delay_us(2);
-}
-
-/**
-  * @brief  I2C发送一个字节
-  * @param  Byte 要发送的一个字节
-  * @retval 无
-  */
-void OLED_I2C_SendByte(uint8_t Byte)
-{
-	uint8_t i;
-	for (i = 0; i < 8; i++)
+	uint32_t timeout = I2C_TIMEOUT;
+	while (!I2C_CheckEvent(OLED_I2C, event))
 	{
-		OLED_W_SDA(!!(Byte & (0x80 >> i)));
-		Delay_us(1);
-		OLED_W_SCL(1);
-		Delay_us(1);
-		OLED_W_SCL(0);
-		Delay_us(1);
+		if (--timeout == 0) return 0;
 	}
-	OLED_W_SCL(1);	//额外的一个时钟，不处理应答信号
-	Delay_us(1);
-	OLED_W_SCL(0);
-	Delay_us(1);
+	return 1;
 }
 
 /**
-  * @brief  OLED写命令
+  * @brief  硬件I2C1初始化（PB6=SCL, PB7=SDA, 400kHz）
+  * @param  无
+  * @retval 无
+  */
+static void OLED_I2C_Init(void)
+{
+	GPIO_InitTypeDef GPIO_InitStructure;
+	I2C_InitTypeDef I2C_InitStructure;
+	uint8_t i;
+
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
+
+	/* 总线复位：若I2C从机将SDA拉死，手动发9个SCL脉冲+STOP将其释放 */
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	GPIO_SetBits(GPIOB, GPIO_Pin_6 | GPIO_Pin_7);
+	for (i = 0; i < 10; i++)
+	{
+		GPIO_ResetBits(GPIOB, GPIO_Pin_6);
+		Delay_us(10);
+		GPIO_SetBits(GPIOB, GPIO_Pin_6);
+		Delay_us(10);
+	}
+	/* 产生STOP条件：SDA拉低→SCL拉高→SDA拉高 */
+	GPIO_ResetBits(GPIOB, GPIO_Pin_7);
+	Delay_us(10);
+	GPIO_SetBits(GPIOB, GPIO_Pin_6);
+	Delay_us(10);
+	GPIO_SetBits(GPIOB, GPIO_Pin_7);
+	Delay_us(10);
+
+	/* 切回复用开漏，初始化硬件I2C1 */
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
+	GPIO_Init(GPIOB, &GPIO_InitStructure);
+
+	I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
+	I2C_InitStructure.I2C_ClockSpeed = 400000;
+	I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;
+	I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;
+	I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
+	I2C_InitStructure.I2C_OwnAddress1 = 0x00;
+	I2C_Init(OLED_I2C, &I2C_InitStructure);
+	I2C_Cmd(OLED_I2C, ENABLE);
+}
+
+/**
+  * @brief  OLED写命令（硬件I2C）
   * @param  Command 要写入的命令
   * @retval 无
   */
 void OLED_WriteCommand(uint8_t Command)
 {
-	OLED_I2C_Start();
-	OLED_I2C_SendByte(0x78);		//从机地址
-	OLED_I2C_SendByte(0x00);		//写命令
-	OLED_I2C_SendByte(Command); 
-	OLED_I2C_Stop();
+	I2C_GenerateSTART(OLED_I2C, ENABLE);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
+	I2C_SendData(OLED_I2C, 0x00);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_SendData(OLED_I2C, Command);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_GenerateSTOP(OLED_I2C, ENABLE);
 }
 
 /**
-  * @brief  OLED写数据
+  * @brief  OLED写数据（硬件I2C）
   * @param  Data 要写入的数据
   * @retval 无
   */
 void OLED_WriteData(uint8_t Data)
 {
-	OLED_I2C_Start();
-	OLED_I2C_SendByte(0x78);		//从机地址
-	OLED_I2C_SendByte(0x40);		//写数据
-	OLED_I2C_SendByte(Data);
-	OLED_I2C_Stop();
+	I2C_GenerateSTART(OLED_I2C, ENABLE);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
+	I2C_SendData(OLED_I2C, 0x40);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_SendData(OLED_I2C, Data);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	I2C_GenerateSTOP(OLED_I2C, ENABLE);
 }
 
 /**
-  * @brief  OLED批量写数据（单次I2C事务发送多个字节）
+  * @brief  OLED批量写数据（硬件I2C，单次事务发送多个字节）
   * @param  pData 数据缓冲区指针
   * @param  len 数据长度
   * @retval 无
-  * @note   跳过重复的Start/Stop，大幅提升刷新效率
   */
 static void OLED_WriteDataBurst(const uint8_t *pData, uint16_t len)
 {
 	uint16_t i;
-	OLED_I2C_Start();
-	OLED_I2C_SendByte(0x78);		//从机地址
-	OLED_I2C_SendByte(0x40);		//写数据
+	I2C_GenerateSTART(OLED_I2C, ENABLE);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
+	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
+	I2C_SendData(OLED_I2C, 0x40);
+	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
 	for (i = 0; i < len; i++)
 	{
-		OLED_I2C_SendByte(pData[i]);
+		I2C_SendData(OLED_I2C, pData[i]);
+		OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
 	}
-	OLED_I2C_Stop();
+	I2C_GenerateSTOP(OLED_I2C, ENABLE);
 }
 
 /**

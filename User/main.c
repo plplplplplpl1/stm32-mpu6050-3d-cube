@@ -126,6 +126,8 @@ int main(void)
 	OLED_Init();
 	Key_Init();
 	MPU6050_Init();
+	/* MPU6050从睡眠唤醒后需等待时钟和MEMS稳定（datasheet: 30ms min） */
+	Delay_ms(100);
 
 	/* 启用 TIM2 硬件定时器，用于精确测量帧时间 */
 	Timer2_Init();

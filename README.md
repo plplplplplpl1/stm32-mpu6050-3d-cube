@@ -10,7 +10,7 @@
 
 | English | 中文 |
 |---------|------|
-| **Software I2C** bit-banging to drive MPU6050 | **软件 I2C** 驱动 MPU6050，读取原始加速度和角速度 |
+| **Hardware I2C**（I2C1）驱动 OLED + **Software I2C** 驱动 MPU6050 | **硬件 I2C1**（PB6/PB7）驱动 OLED（100kHz）+ **软件 I2C**（PB10/PB11）驱动 MPU6050 |
 | **Complementary filter** for real-time Pitch / Roll / Yaw | **互补滤波** 实时解算姿态角 |
 | **31 wireframe polyhedra** — 5 Platonic, 3 Archimedean/stellated, 12 hyperbolic tilings {p,q}, 5 convex 4D polytopes (5-cell, tesseract, 16/24/600-cell), 4 Schläfli-Hess star 4D polytopes — via perspective projection on OLED 128×64 | **31种线框多面体** — 5种柏拉图立体、3种阿基米德/星形、12种双曲镶嵌{p,q}、5种凸4D正多胞体（5-cell/超立方体/16/24/600胞体）、4种Schläfli-Hess 4D星形多胞体 — 透视投影到 OLED 128×64 |
 | **Hardware timer TIM2** for accurate frame time measurement | **硬件定时器 TIM2** 精确测量帧时间，姿态积分与真实时间同步 |
@@ -37,8 +37,8 @@
 |-------|---------|------|--------|
 | PB10 | SCL | - | - |
 | PB11 | SDA | - | - |
-| PB8  | -   | SCL | - |
-| PB9  | -   | SDA | - |
+| PB6  | -   | SCL | - |
+| PB7  | -   | SDA | - |
 | PB1  | -   | -   | KEY1 |
 | PB12 | -   | -   | KEY2 |
 | PA6  | -   | -   | KEY3 |
@@ -51,11 +51,11 @@
 
 | Module / 模块 | Role (EN) | 作用 (CN) |
 |---------------|-----------|-----------|
-| **MyI2C** | Software-bitbanged I2C protocol | 软件模拟 I2C 时序 |
-| **MPU6050** | Sensor register read/write & data acquisition | 传感器寄存器读写与数据获取 |
+| **MPU6050** | Sensor register read/write & data acquisition via **Software I2C** (PB10/PB11) | 传感器寄存器读写与数据获取，**软件 I2C**（PB10/PB11） |
 | **Attitude** | Complementary filter + gyro calibration | 互补滤波姿态解算 + 陀螺零偏标定 |
 | **Cube3D** | 3D rotation matrix + perspective projection → OLED | 三维旋转矩阵 + 透视投影 → OLED 线框绘制 |
-| **OLED** | SSD1306 driver (with CJK font table) | SSD1306 驱动（含汉字字模） |
+| **OLED** | SSD1306 driver via **Hardware I2C1** (PB6/PB7, 100kHz) | SSD1306 驱动，**硬件 I2C1**（PB6/PB7, 100kHz） |
+| **MyI2C** | Software-bitbanged I2C protocol (for MPU6050) | 软件模拟 I2C 时序（驱动 MPU6050） |
 
 ## Usage / 使用方法
 
