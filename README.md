@@ -40,7 +40,7 @@
 | PB6  | -   | SCL | - |
 | PB7  | -   | SDA | - |
 | PB1  | -   | -   | KEY1 |
-| PB12 | -   | -   | KEY2 |
+| PA2  | -   | -   | KEY2 |
 | PA6  | -   | -   | KEY3 |
 | PA4  | -   | -   | KEY4 |
 
@@ -87,15 +87,26 @@ After self-test, the 3D cube appears on the OLED. Rotate the board — the cube 
 
 ### 4. Button Controls / 按键操作
 
+**Main Menu / 主菜单：**
+
+After power-on self-test, the main menu appears with 4 items: 水平仪 (level meter), 电子罗盘 (compass), 温度监测 (temperature), 计步器 (pedometer). Currently only 水平仪 is available; others show "待开发" (under development).
+
+上电自检后进入主菜单，共4项：水平仪、电子罗盘、温度监测、计步器。仅水平仪可用，其余显示"待开发"。
+
+| Button / 按键 | Action / 功能 |
+|--------------|--------------|
+| **KEY3 (PA6)** | Move cursor up / 光标上移 |
+| **KEY4 (PA4)** | Move cursor down / 光标下移 |
+| **KEY1 (PB1)** | Select / 确认选择 |
+
+**3D Cube Mode / 3D立方体模式：**
+
 | Button / 按键 | Action / 功能 | OLED Feedback / 反馈 |
 |--------------|--------------|---------------------|
-| **KEY1** | Toggle direction / 切换方向 | Shows / 显示 `方向:NORMAL / REVERSE`（400ms） |
-| **KEY2** | Recalibrate gyro / 重标定陀螺仪 | Shows / 显示 `校准中...` → `完成` |
-| **KEY3 (PA6)** | Cycle shape up / 向上切换图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
-| **KEY4 (PA4)** | Cycle shape down / 向下切换图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
-
-> Recalibrate whenever you notice drift. Place the board flat and still during calibration.
-> 发现漂移时可随时按 KEY2 重新标定，标定时请保持板子静止水平。
+| **KEY1 (PB1)** | Toggle rotation direction / 切换旋转方向 | Shows / 显示 `方向:NORMAL / REVERSE`（400ms） |
+| **KEY2 (PA2)** | Return to menu / 返回主菜单 | - |
+| **KEY3 (PA6)** | Next shape / 下一个图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
+| **KEY4 (PA4)** | Previous shape / 上一个图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
 
 ## Key Algorithms / 关键算法
 
@@ -108,3 +119,13 @@ After self-test, the 3D cube appears on the OLED. Rotate the board — the cube 
 | **4D→3D→2D Pipeline** | 4D rotation (XW+YZ), perspective project to 3D, 3D rotate, then project to screen with auto-scale | 4D旋转、透视投影到3D、3D旋转、再投影到屏幕，自动缩放适配 |
 | **4D Auto-rotation** | XW plane at 15°/s, YZ plane at 10°/s, independent of MPU rotation | XW平面15°/s、YZ平面10°/s持续自动旋转，与MPU姿态角相互独立 |
 | **Hyperbolic Tessellation {p,q}** | Regular tiling of the hyperbolic plane mapped via stereographic projection to 3D | 双曲正多边形镶嵌{p,q}，经球极投影映射到3D空间 |
+
+## Changelog / 更新日志
+
+### 2026-06-09
+- **Key2 引脚从 PB12 改为 PA2**（PB12 硬件故障）
+- **按键消抖改为非阻塞计数方式**，不再使用 `Delay_ms` 阻塞，消除 SysTick 干扰 GPIO 读取的隐患
+- **MPU6050 时钟源修复**：`PWR_MGMT_1` 从 `0x01`（X轴陀螺 PLL）改为 `0x00`（内部 8MHz RC 振荡器），启动更稳定
+- **新增主菜单界面**（Menu.c），支持光标导航，预留 电子罗盘/温度监测/计步器 入口
+- **KEY2 功能变更**：3D 立方体模式下按 KEY2 返回主菜单（原为重标定陀螺仪）
+- **PA2 上拉显式置位**：修复标准库 `GPIO_Init` 未正确设置 PA2 ODR 的问题

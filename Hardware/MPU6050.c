@@ -88,7 +88,7 @@ void MPU6050_Init(void)
 	MyI2C_Init();									//先初始化底层的I2C
 
 	/*MPU6050寄存器初始化，需要对照MPU6050手册的寄存器描述配置，此处仅配置了部分重要的寄存器*/
-	MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);		//电源管理寄存器1，取消睡眠模式，选择时钟源为X轴陀螺仪
+	MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x00);		//电源管理寄存器1，取消睡眠模式，选择时钟源为内部8MHz RC振荡器
 	MPU6050_WriteReg(MPU6050_PWR_MGMT_2, 0x00);		//电源管理寄存器2，保持默认值0，所有轴均不待机
 	MPU6050_WriteReg(MPU6050_SMPLRT_DIV, 0x09);		//采样率分频寄存器，配置采样率
 	MPU6050_WriteReg(MPU6050_CONFIG, 0x06);			//配置寄存器，配置DLPF
