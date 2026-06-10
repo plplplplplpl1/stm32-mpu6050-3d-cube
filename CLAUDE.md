@@ -37,3 +37,30 @@ Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup .s
 | Software I2C | Bitbang (MyI2C) | PB10 (SCL), PB11 (SDA) | MPU6050 | — |
 
 **Do NOT switch which I2C drives which device** without verifying timing: the software I2C has μs-level delays tuned for MPU6050; the OLED uses the SPL hardware I2C driver.
+
+## W25Q64 NOR Flash (8MB)
+
+- **Driver**: Software SPI (bitbang) on PB12=CS, PB13=SCK, PB14=MOSI(DI), PB15=MISO(DO)
+- **Critical wiring note**: Module silk-screen "DO" = master TX (MOSI→PB14), "DI" = master RX (MISO←PB15). These labels are from the *master's perspective*, reversed from standard W25Q64 datasheet convention. Connecting them the "obvious" way (DO→MISO, DI→MOSI) will fail — DO pin pulls to GND when deselected.
+- **Flash layout** (`W25Q64_Layout.h`):
+  - `0x000000` Cat frames (28×1024B = 28KB)
+  - `0x007000` 3D/4D shape data (64KB)
+  - `0x017000` Chinese font (16KB)
+  - `0x01B000` ASCII font (4KB)
+  - `0x01C000` Calibration data (4KB)
+- **Boot diagnostic**: `#if 0`-disabled in main.c; change to `#if 1` to re-enable JEDEC/SR/write test
+- **Serial flashing**: `python Tools/serial_flash.py COMx` — requires USB-TTL (TX→PA3, RX←PA9, GND↔GND). STM32 boots into `Serial_FlashBurn()` for 3s timeout. Image built via `python Tools/flash_image_builder.py`.
+
+## Cat Animation (月薪猫)
+
+- `Tools/convert_cat.py` converts `cat.GIF` → `Hardware/CatFrames.h` (28 frames, 1024B each)
+- `CatAnimation_Play()` reads frames from W25Q64 in real-time, writes directly to SSD1306 GDDRAM
+- KEY2 returns to menu; LED1 on during playback
+
+## Known Pitfalls
+
+- **W25Q64 DO/DI labels**: Module labels are master-perspective, NOT flash-perspective
+- **Software SPI on breadboard**: Not reliable for this module. Hardware SPI2 was tested and works for reads, but software SPI debugging consumed significant time. If re-testing, start with hardware SPI.
+- **OLED I2C**: Enhanced with timeout + bus recovery (SWRST + 9 SCK pulses) + auto-retry
+- **MPU6050**: Uses burst read (14 bytes in one I2C transaction), auto-increment mode
+- **MENU KEY2**: PA2 (NOT PB12 as older README versions stated)
