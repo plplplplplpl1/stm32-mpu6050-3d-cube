@@ -1,6 +1,8 @@
 #include "Attitude.h"
 #include "MPU6050.h"
 #include "Delay.h"
+#include "W25Q64.h"
+#include "W25Q64_Layout.h"
 #include <math.h>
 
 /* MPU6050当前配置：陀螺仪 ±2000dps，对应灵敏度 16.4 LSB/(deg/s) */
@@ -22,6 +24,20 @@
 #define RAD_TO_DEG              57.2957795f
 #define DEFAULT_DT_SEC          0.01f
 #define MIN_DENORM_EPS          0.0001f
+
+/* W25Q64 校准数据魔数 */
+#define CALIB_MAGIC             0xCA11B400UL
+
+/* 校准数据 W25Q64 存储结构: 16 bytes */
+typedef union {
+    uint8_t  raw[16];
+    struct {
+        uint32_t magic;
+        float    biasX;
+        float    biasY;
+        float    biasZ;
+    } fields;
+} CalibData_t;
 
 static Attitude_t g_attitude;
 static float g_gyroBiasXDps = 0.0f;
@@ -49,6 +65,44 @@ static float WrapAngleDeg(float angleDeg)
 		angleDeg += 360.0f;
 	}
 	return angleDeg;
+}
+
+/**
+  * @brief  从 W25Q64 加载陀螺仪校准数据
+  * @retval 1=加载成功, 0=无有效数据
+  */
+static uint8_t Attitude_LoadCalib(void)
+{
+    CalibData_t calib;
+    W25Q64_ReadData(W25Q_CALIB_ADDR, calib.raw, sizeof(calib));
+
+    /* 校验魔数 */
+    if (calib.fields.magic != CALIB_MAGIC)
+        return 0;
+
+    g_gyroBiasXDps = calib.fields.biasX;
+    g_gyroBiasYDps = calib.fields.biasY;
+    g_gyroBiasZDps = calib.fields.biasZ;
+
+    return 1;
+}
+
+/**
+  * @brief  保存陀螺仪校准数据到 W25Q64
+  */
+static void Attitude_SaveCalib(void)
+{
+    CalibData_t calib;
+    calib.fields.magic = CALIB_MAGIC;
+    calib.fields.biasX = g_gyroBiasXDps;
+    calib.fields.biasY = g_gyroBiasYDps;
+    calib.fields.biasZ = g_gyroBiasZDps;
+
+    /* 擦除校准区所在扇区 */
+    W25Q64_SectorErase(W25Q_CALIB_ADDR);
+    /* 写入新数据 */
+    W25Q64_PageProgram(W25Q_CALIB_ADDR, calib.raw, sizeof(calib));
+
 }
 
 void Attitude_CalibrateGyro(void)
@@ -97,6 +151,9 @@ void Attitude_CalibrateGyro(void)
 	g_attitude.PitchDeg = 0.0f;
 	g_attitude.RollDeg = 0.0f;
 	g_attitude.YawDeg = 0.0f;
+
+	/* 保存到 W25Q64，下次开机直接加载 */
+	Attitude_SaveCalib();
 }
 
 void Attitude_Init(void)
@@ -105,6 +162,14 @@ void Attitude_Init(void)
 	g_attitude.RollDeg = 0.0f;
 	g_attitude.YawDeg = 0.0f;
 
+	/* 优先从 W25Q64 加载历史校准数据 */
+	if (Attitude_LoadCalib())
+	{
+		/* 校准已加载，跳过 2s 标定 */
+		return;
+	}
+
+	/* 首次上电或数据无效，执行标定 */
 	Attitude_CalibrateGyro();
 }
 

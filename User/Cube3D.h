@@ -51,6 +51,7 @@ typedef struct
 #define SHAPE_P600_STAR4    30
 
 #define TOTAL_SHAPE_COUNT   31
+#define HYPERBOLIC_MAX_VTX  150
 
 void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, float dtSec);
 

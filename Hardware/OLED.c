@@ -15,41 +15,28 @@ static uint8_t OLED_GRAM[8][128];
 void OLED_Refresh(void);
 
 /**
-  * @brief  硬件I2C等待事件（带超时保护，防止总线卡死）
-  * @param  event I2C事件宏
-  * @retval 1=成功，0=超时
-  */
-static uint8_t OLED_I2C_WaitEvent(uint32_t event)
-{
-	uint32_t timeout = I2C_TIMEOUT;
-	while (!I2C_CheckEvent(OLED_I2C, event))
-	{
-		if (--timeout == 0) return 0;
-	}
-	return 1;
-}
-
-/**
-  * @brief  硬件I2C1初始化（PB6=SCL, PB7=SDA, 400kHz）
+  * @brief  硬件I2C总线恢复：SWRST外设 + 9个SCL脉冲释放SDA + STOP + 重新初始化
   * @param  无
   * @retval 无
+  * @note   STM32F1 I2C外设已知缺陷：BUSY标志可能卡死。此函数彻底复位总线。
   */
-static void OLED_I2C_Init(void)
+static void OLED_I2C_BusRecover(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	I2C_InitTypeDef I2C_InitStructure;
 	uint8_t i;
 
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
+	/* 1. 复位I2C1外设（SWRST） */
+	I2C_SoftwareResetCmd(OLED_I2C, ENABLE);
+	I2C_SoftwareResetCmd(OLED_I2C, DISABLE);
 
-	/* 总线复位：若I2C从机将SDA拉死，手动发9个SCL脉冲+STOP将其释放 */
+	/* 2. 切换PB6/PB7为GPIO开漏，手动发9个SCL脉冲释放SDA */
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_Out_OD;
 	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
-	GPIO_SetBits(GPIOB, GPIO_Pin_6 | GPIO_Pin_7);
+	GPIO_SetBits(GPIOB, GPIO_Pin_6 | GPIO_Pin_7);	/* 先释放总线 */
 	for (i = 0; i < 10; i++)
 	{
 		GPIO_ResetBits(GPIOB, GPIO_Pin_6);
@@ -65,12 +52,12 @@ static void OLED_I2C_Init(void)
 	GPIO_SetBits(GPIOB, GPIO_Pin_7);
 	Delay_us(10);
 
-	/* 切回复用开漏，初始化硬件I2C1 */
+	/* 3. 切回复用开漏，重新初始化I2C1外设 */
 	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF_OD;
 	GPIO_Init(GPIOB, &GPIO_InitStructure);
 
 	I2C_InitStructure.I2C_Mode = I2C_Mode_I2C;
-	I2C_InitStructure.I2C_ClockSpeed = 400000;
+	I2C_InitStructure.I2C_ClockSpeed = 400000;		/* 400kHz：OLED帧刷新需高速，SSD1306支持 */
 	I2C_InitStructure.I2C_DutyCycle = I2C_DutyCycle_2;
 	I2C_InitStructure.I2C_Ack = I2C_Ack_Enable;
 	I2C_InitStructure.I2C_AcknowledgedAddress = I2C_AcknowledgedAddress_7bit;
@@ -80,60 +67,121 @@ static void OLED_I2C_Init(void)
 }
 
 /**
-  * @brief  OLED写命令（硬件I2C）
+  * @brief  硬件I2C等待事件（带超时保护 + 总线自动恢复）
+  * @param  event I2C事件宏
+  * @retval 1=成功，0=超时（已自动复位总线）
+  */
+static uint8_t OLED_I2C_WaitEvent(uint32_t event)
+{
+	volatile uint32_t timeout = I2C_TIMEOUT;
+	while (!I2C_CheckEvent(OLED_I2C, event))
+	{
+		if (--timeout == 0)
+		{
+			OLED_I2C_BusRecover();	/* 超时→复位总线→下次调用可用 */
+			return 0;
+		}
+	}
+	return 1;
+}
+
+/**
+  * @brief  硬件I2C1初始化（PB6=SCL, PB7=SDA, 100kHz）
+  * @param  无
+  * @retval 无
+  */
+static void OLED_I2C_Init(void)
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1, ENABLE);
+
+	OLED_I2C_BusRecover();	/* 统一使用总线恢复函数完成复位+初始化 */
+}
+
+/**
+  * @brief  OLED写命令（硬件I2C），超时自动恢复+重试
   * @param  Command 要写入的命令
   * @retval 无
   */
 void OLED_WriteCommand(uint8_t Command)
 {
-	I2C_GenerateSTART(OLED_I2C, ENABLE);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
-	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
-	I2C_SendData(OLED_I2C, 0x00);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
-	I2C_SendData(OLED_I2C, Command);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
-	I2C_GenerateSTOP(OLED_I2C, ENABLE);
+	uint8_t retry;
+	for (retry = 0; retry < 2; retry++)
+	{
+		I2C_GenerateSTART(OLED_I2C, ENABLE);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT)) continue;
+		I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) continue;
+		I2C_SendData(OLED_I2C, 0x00);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) continue;
+		I2C_SendData(OLED_I2C, Command);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) continue;
+		I2C_GenerateSTOP(OLED_I2C, ENABLE);
+		return;	/* 成功 */
+	}
+	I2C_GenerateSTOP(OLED_I2C, ENABLE);	/* 重试耗尽，强制STOP释放总线 */
 }
 
 /**
-  * @brief  OLED写数据（硬件I2C）
+  * @brief  OLED写数据（硬件I2C），超时自动恢复+重试
   * @param  Data 要写入的数据
   * @retval 无
   */
 void OLED_WriteData(uint8_t Data)
 {
-	I2C_GenerateSTART(OLED_I2C, ENABLE);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
-	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
-	I2C_SendData(OLED_I2C, 0x40);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
-	I2C_SendData(OLED_I2C, Data);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+	uint8_t retry;
+	for (retry = 0; retry < 2; retry++)
+	{
+		I2C_GenerateSTART(OLED_I2C, ENABLE);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT)) continue;
+		I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) continue;
+		I2C_SendData(OLED_I2C, 0x40);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) continue;
+		I2C_SendData(OLED_I2C, Data);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) continue;
+		I2C_GenerateSTOP(OLED_I2C, ENABLE);
+		return;
+	}
 	I2C_GenerateSTOP(OLED_I2C, ENABLE);
 }
 
 /**
-  * @brief  OLED批量写数据（硬件I2C，单次事务发送多个字节）
+  * @brief  OLED批量写数据（硬件I2C，单次事务发送多个字节），超时自动恢复+重试
   * @param  pData 数据缓冲区指针
   * @param  len 数据长度
   * @retval 无
   */
-static void OLED_WriteDataBurst(const uint8_t *pData, uint16_t len)
+void OLED_WriteDataBurst(const uint8_t *pData, uint16_t len)
 {
 	uint16_t i;
-	I2C_GenerateSTART(OLED_I2C, ENABLE);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT);
-	I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED);
-	I2C_SendData(OLED_I2C, 0x40);
-	OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
-	for (i = 0; i < len; i++)
+	uint8_t retry;
+	uint8_t ok;
+
+	for (retry = 0; retry < 2; retry++)
 	{
-		I2C_SendData(OLED_I2C, pData[i]);
-		OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED);
+		ok = 1;
+		I2C_GenerateSTART(OLED_I2C, ENABLE);
+		if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_MODE_SELECT)) ok = 0;
+		if (ok) {
+			I2C_Send7bitAddress(OLED_I2C, OLED_SLAVE_ADDR, I2C_Direction_Transmitter);
+			if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) ok = 0;
+		}
+		if (ok) {
+			I2C_SendData(OLED_I2C, 0x40);
+			if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) ok = 0;
+		}
+		if (ok) {
+			for (i = 0; i < len; i++)
+			{
+				I2C_SendData(OLED_I2C, pData[i]);
+				if (!OLED_I2C_WaitEvent(I2C_EVENT_MASTER_BYTE_TRANSMITTED)) { ok = 0; break; }
+			}
+		}
+		if (ok) {
+			I2C_GenerateSTOP(OLED_I2C, ENABLE);
+			return;	/* 成功 */
+		}
 	}
 	I2C_GenerateSTOP(OLED_I2C, ENABLE);
 }
@@ -180,7 +228,7 @@ void OLED_ClearBuffer(void)
   * @retval 无
   */
 void OLED_ShowChar(uint8_t Line, uint8_t Column, char Char)
-{      	
+{
 	uint8_t i;
 	OLED_SetCursor((Line - 1) * 2, (Column - 1) * 8);		//设置光标位置在上半部分
 	for (i = 0; i < 8; i++)
@@ -259,107 +307,6 @@ void OLED_ShowChinese16(uint8_t Line, uint8_t Column, const uint8_t *Font16x16)
 			}
 		}
 		OLED_WriteData(lowerByte);
-	}
-}
-
-/**
-  * @brief  OLED次方函数
-  * @retval 返回值等于X的Y次方
-  */
-uint32_t OLED_Pow(uint32_t X, uint32_t Y)
-{
-	uint32_t Result = 1;
-	while (Y--)
-	{
-		Result *= X;
-	}
-	return Result;
-}
-
-/**
-  * @brief  OLED显示数字（十进制，正数）
-  * @param  Line 起始行位置，范围：1~4
-  * @param  Column 起始列位置，范围：1~16
-  * @param  Number 要显示的数字，范围：0~4294967295
-  * @param  Length 要显示数字的长度，范围：1~10
-  * @retval 无
-  */
-void OLED_ShowNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Length)
-{
-	uint8_t i;
-	for (i = 0; i < Length; i++)							
-	{
-		OLED_ShowChar(Line, Column + i, Number / OLED_Pow(10, Length - i - 1) % 10 + '0');
-	}
-}
-
-/**
-  * @brief  OLED显示数字（十进制，带符号数）
-  * @param  Line 起始行位置，范围：1~4
-  * @param  Column 起始列位置，范围：1~16
-  * @param  Number 要显示的数字，范围：-2147483648~2147483647
-  * @param  Length 要显示数字的长度，范围：1~10
-  * @retval 无
-  */
-void OLED_ShowSignedNum(uint8_t Line, uint8_t Column, int32_t Number, uint8_t Length)
-{
-	uint8_t i;
-	uint32_t Number1;
-	if (Number >= 0)
-	{
-		OLED_ShowChar(Line, Column, '+');
-		Number1 = Number;
-	}
-	else
-	{
-		OLED_ShowChar(Line, Column, '-');
-		Number1 = -Number;
-	}
-	for (i = 0; i < Length; i++)							
-	{
-		OLED_ShowChar(Line, Column + i + 1, Number1 / OLED_Pow(10, Length - i - 1) % 10 + '0');
-	}
-}
-
-/**
-  * @brief  OLED显示数字（十六进制，正数）
-  * @param  Line 起始行位置，范围：1~4
-  * @param  Column 起始列位置，范围：1~16
-  * @param  Number 要显示的数字，范围：0~0xFFFFFFFF
-  * @param  Length 要显示数字的长度，范围：1~8
-  * @retval 无
-  */
-void OLED_ShowHexNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Length)
-{
-	uint8_t i, SingleNumber;
-	for (i = 0; i < Length; i++)							
-	{
-		SingleNumber = Number / OLED_Pow(16, Length - i - 1) % 16;
-		if (SingleNumber < 10)
-		{
-			OLED_ShowChar(Line, Column + i, SingleNumber + '0');
-		}
-		else
-		{
-			OLED_ShowChar(Line, Column + i, SingleNumber - 10 + 'A');
-		}
-	}
-}
-
-/**
-  * @brief  OLED显示数字（二进制，正数）
-  * @param  Line 起始行位置，范围：1~4
-  * @param  Column 起始列位置，范围：1~16
-  * @param  Number 要显示的数字，范围：0~1111 1111 1111 1111
-  * @param  Length 要显示数字的长度，范围：1~16
-  * @retval 无
-  */
-void OLED_ShowBinNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Length)
-{
-	uint8_t i;
-	for (i = 0; i < Length; i++)							
-	{
-		OLED_ShowChar(Line, Column + i, Number / OLED_Pow(2, Length - i - 1) % 2 + '0');
 	}
 }
 

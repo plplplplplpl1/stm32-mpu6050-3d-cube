@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(python3 *)",
+      "Bash(python Tools/gen_hyperbolic.py)",
+      "Bash(python -c ' *)",
+      "Bash(python Tools/gen_4d_cell.py)",
+      "Bash(dir /b /s *.c)",
+      "Bash(python \"Tools/gen_4d_cell.py\")",
+      "Bash(attrib -r Start/startup_stm32f10x_md.s)",
+      "Bash(attrib +r Start/startup_stm32f10x_md.s)",
+      "Bash(git checkout *)"
+    ]
+  }
+}

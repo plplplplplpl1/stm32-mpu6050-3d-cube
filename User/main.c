@@ -5,292 +5,263 @@
 #include "Key.h"
 #include "Attitude.h"
 #include "Cube3D.h"
+#include "FontCN.h"
+#include "Menu.h"
+#include "CatAnimation.h"
+#include "W25Q64.h"
+#include "W25Q64_Layout.h"
+#include "serial.h"
 
-/*
- * 实时帧率：使用 TIM2 硬件定时器测量实际帧时间，
- * 使姿态积分 dt 与真实经过时间一致，避免固定 dt 假设导致的角度偏差。
- */
-#define TIM2_CLOCK_HZ       1000000UL   /* TIM2 配置为 1MHz (1µs/tick) */
-#define DT_MAX_SEC          0.2f        /* dt 上限保护（含OLED刷新耗时） */
-#define DT_MIN_SEC          0.001f      /* dt 下限保护 */
-
-static const uint8_t HZK_XIAO[32] = {
-	0x10,0x10,0x10,0xFD,0x10,0x38,0x34,0x51,0x51,0x92,0x10,0x10,0x10,0x11,0x16,0x10,
-	0x40,0x20,0x20,0xFE,0x00,0x88,0x84,0x0A,0x08,0x90,0x90,0x60,0x60,0x98,0x0E,0x04
-};
-static const uint8_t HZK_ZHUN[32] = {
-	0x02,0x43,0x22,0x33,0x26,0x0A,0x13,0x12,0x12,0xE3,0x22,0x22,0x22,0x23,0x22,0x00,
-	0x40,0x20,0x24,0xFE,0x20,0x28,0xFC,0x20,0x28,0xFC,0x20,0x20,0x24,0xFE,0x00,0x00
-};
-static const uint8_t HZK_ZHONG[32] = {
-	0x01,0x01,0x21,0x3F,0x21,0x21,0x21,0x21,0x21,0x3F,0x21,0x01,0x01,0x01,0x01,0x01,
-	0x00,0x00,0x08,0xFC,0x08,0x08,0x08,0x08,0x08,0xF8,0x08,0x00,0x00,0x00,0x00,0x00
-};
-static const uint8_t HZK_WAN[32] = {
-	0x02,0x01,0x3F,0x20,0x40,0x1F,0x00,0x7F,0x04,0x04,0x04,0x08,0x08,0x10,0x20,0x40,
-	0x00,0x00,0xFE,0x04,0x08,0xF0,0x00,0xFC,0x40,0x40,0x40,0x40,0x44,0x44,0x3C,0x00
-};
-static const uint8_t HZK_CHENG[32] = {
-	0x00,0x00,0x00,0x3F,0x20,0x20,0x3E,0x22,0x22,0x22,0x22,0x2A,0x44,0x41,0x86,0x00,
-	0xA0,0x90,0x80,0xFE,0x80,0x80,0x88,0x8C,0x48,0x50,0x20,0x60,0x92,0x0A,0x06,0x02
-};
-static const uint8_t HZK_QING[32] = {
-	0x00,0x47,0x30,0x23,0x00,0x07,0xF0,0x13,0x12,0x13,0x12,0x13,0x16,0x1A,0x12,0x02,
-	0x40,0xFC,0x40,0xF8,0x40,0xFE,0x00,0xF8,0x08,0xF8,0x08,0xF8,0x08,0x08,0x28,0x10
-};
-static const uint8_t HZK_JING[32] = {
-	0x10,0xFE,0x10,0x7C,0x10,0xFE,0x00,0x7D,0x44,0x7C,0x44,0x7C,0x44,0x44,0x54,0x48,
-	0x40,0x40,0x78,0x90,0x20,0xFC,0x24,0xFE,0x24,0xFC,0x20,0x20,0x20,0x20,0xA0,0x40
-};
-static const uint8_t HZK_ZHI[32] = {
-	0x00,0x00,0x00,0x00,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0x08,0xFF,0x00,
-	0x80,0x80,0x80,0x80,0x80,0x80,0xFC,0x80,0x80,0x80,0x80,0x80,0x80,0x80,0xFE,0x00
-};
-static const uint8_t HZK_FAN[32] = {
-	0x00,0x00,0x3E,0x22,0x22,0x22,0x22,0x22,0x22,0x22,0x22,0x3E,0x00,0x00,0x00,0x00,
-	0x00,0x00,0xFE,0x92,0x92,0x92,0x92,0x92,0x92,0x92,0x92,0xFE,0x00,0x00,0x00,0x00
-};
+#define TIM2_CLOCK_HZ       1000000UL
+#define DT_MAX_SEC          0.2f
+#define DT_MIN_SEC          0.001f
 
 static uint8_t MPU_ID_IsSupported(uint8_t id)
 {
-	/* 常见器件ID：MPU6050(0x68/0x69), MPU6500/9250系列常见为0x70/0x71 */
 	return (id == 0x68 || id == 0x69 || id == 0x70 || id == 0x71);
 }
 
-static void ShowCalibratePage(uint8_t isDone)
-{
-	OLED_Clear();
-	OLED_ShowChinese16(1, 2, HZK_XIAO);
-	OLED_ShowChinese16(1, 3, HZK_ZHUN);
-
-	if (isDone)
-	{
-		OLED_ShowChinese16(2, 2, HZK_WAN);
-		OLED_ShowChinese16(2, 3, HZK_CHENG);
-	}
-	else
-	{
-		OLED_ShowChinese16(2, 2, HZK_QING);
-		OLED_ShowChinese16(2, 3, HZK_JING);
-		OLED_ShowChinese16(2, 4, HZK_ZHI);
-		OLED_ShowChinese16(3, 2, HZK_XIAO);
-		OLED_ShowChinese16(3, 3, HZK_ZHUN);
-		OLED_ShowChinese16(3, 4, HZK_ZHONG);
-	}
-}
-
-/* 显示当前旋转方向 */
 static void ShowDirPage(int8_t dir)
 {
 	OLED_Clear();
 	OLED_ShowChinese16(2, 2, HZK_FAN);
 	OLED_ShowString(2, 5, ":");
 	if (dir == 1)
-	{
 		OLED_ShowString(2, 6, "NORMAL");
-	}
 	else
-	{
 		OLED_ShowString(2, 6, "REVERSE");
-	}
 }
 
-/* TIM2 初始化为 1MHz 自由运行计数器 */
 static void Timer2_Init(void)
 {
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-	TIM2->PSC = 72 - 1;			// 72MHz / 72 = 1MHz
-	TIM2->ARR = 0xFFFFFFFFUL;		/* 32-bit max reload */// 32位最大计数值
-	TIM2->CR1 |= TIM_CR1_CEN;	// 启动计数
+	TIM2->PSC = 72 - 1;
+	TIM2->ARR = 0xFFFFFFFFUL;
+	TIM2->CR1 |= TIM_CR1_CEN;
 }
 
 int main(void)
 {
 	uint8_t mpuId;
 	uint8_t keyNum;
-	int8_t rotationDir = 1;				// 旋转方向：1=正向，-1=反向
-	uint8_t dirChanged = 0;				// 方向改变标记，用于刷新指示
-	uint8_t shape = SHAPE_CUBE;			// 当前显示图形：SHAPE_CUBE 或 SHAPE_OCTAHEDRON
+	int8_t rotationDir = 1;
+	uint8_t dirChanged = 0;
+	uint8_t shape = SHAPE_CUBE;
 	Attitude_t attitude;
 	uint32_t lastTick, curTick;
 	float dtSec;
 
-	/*
-	 * 1) 传感器驱动层初始化
-	 *    - MPU6050_Init: 配置I2C与MPU寄存器
-	 * 2) 显示驱动层初始化
-	 *    - OLED_Init: 初始化OLED并建立图形缓冲
-	 * 3) 算法状态初始化
-	 *    - Attitude_Init: 清零姿态估计器状态并校准零偏
-	 */
 	OLED_Init();
 	Key_Init();
 	MPU6050_Init();
+	Serial_Init();
 	/* MPU6050从睡眠唤醒后需等待时钟和MEMS稳定（datasheet: 30ms min） */
 	Delay_ms(100);
 
-	/* 启用 TIM2 硬件定时器，用于精确测量帧时间 */
-	Timer2_Init();
+	/* ── W25Q64 诊断 ── */
+	W25Q64_Init();
+	Serial_FlashBurn();
+	OLED_Clear();
+	{
+		uint8_t m,tp,c,s1,s2,s3,d[4]; char h[3];
+		W25Q64_ReadJEDECID(&m,&tp,&c);
+		OLED_ShowString(1,0,"JD");
+		h[0]="0123456789ABCDEF"[m>>4]; h[1]="0123456789ABCDEF"[m&0xF]; h[2]=0; OLED_ShowString(1,2,h);
+		h[0]="0123456789ABCDEF"[tp>>4]; h[1]="0123456789ABCDEF"[tp&0xF]; OLED_ShowString(1,4,h);
+		h[0]="0123456789ABCDEF"[c>>4]; h[1]="0123456789ABCDEF"[c&0xF]; OLED_ShowString(1,6,h);
+		OLED_ShowString(1,9,"OK");
 
+		s1=W25Q64_ReadSR1(); s2=W25Q64_ReadSR2(); s3=W25Q64_ReadSR3();
+		OLED_ShowString(2,0,"S");
+		h[0]="0123456789ABCDEF"[s1>>4]; h[1]="0123456789ABCDEF"[s1&0xF]; h[2]=0; OLED_ShowString(2,1,h);
+		OLED_ShowString(2,3,"/");
+		h[0]="0123456789ABCDEF"[s2>>4]; h[1]="0123456789ABCDEF"[s2&0xF]; OLED_ShowString(2,4,h);
+		OLED_ShowString(2,6,"/");
+		h[0]="0123456789ABCDEF"[s3>>4]; h[1]="0123456789ABCDEF"[s3&0xF]; OLED_ShowString(2,7,h);
+		OLED_ShowString(2,10,(s1&0x80)?"P+":"P-");
+		OLED_ShowString(2,12,(s1&0x02)?"W+":"W-");
+		OLED_ShowString(2,14,(s1&0x01)?"B+":"B-");
+		h[0]="0123456789ABCDEF"[(s1>>2)&0xF]; h[1]=0; OLED_ShowString(2,16,h);
+
+		W25Q64_WriteEnable(); s1=W25Q64_ReadSR1();
+		OLED_ShowString(3,0,"WE");
+		h[0]="0123456789ABCDEF"[s1>>4]; h[1]="0123456789ABCDEF"[s1&0xF]; h[2]=0; OLED_ShowString(3,2,h);
+		OLED_ShowString(3,5,(s1&0x80)?"P+":"P-");
+		OLED_ShowString(3,7,(s1&0x02)?"WEL=1":"WEL0");
+		OLED_ShowString(3,12,(s1&0x01)?"BUSY":"-");
+
+		W25Q64_SectorErase(W25Q_CALIB_ADDR);
+		W25Q64_WriteEnable();
+		d[0]=0xA5; d[1]=0x5A; d[2]=0x3C; d[3]=0xC3;
+		W25Q64_PageProgram(W25Q_CALIB_ADDR,d,4);
+		d[0]=d[1]=d[2]=d[3]=0;
+		W25Q64_ReadData(W25Q_CALIB_ADDR,d,4);
+		OLED_ShowString(4,0,"W");
+		h[0]="0123456789ABCDEF"[d[0]>>4]; h[1]="0123456789ABCDEF"[d[0]&0xF]; h[2]=0; OLED_ShowString(4,1,h);
+		h[0]="0123456789ABCDEF"[d[1]>>4]; h[1]="0123456789ABCDEF"[d[1]&0xF]; OLED_ShowString(4,3,h);
+		h[0]="0123456789ABCDEF"[d[2]>>4]; h[1]="0123456789ABCDEF"[d[2]&0xF]; OLED_ShowString(4,5,h);
+		h[0]="0123456789ABCDEF"[d[3]>>4]; h[1]="0123456789ABCDEF"[d[3]&0xF]; OLED_ShowString(4,7,h);
+		OLED_ShowString(4,9,(d[0]==0xA5)?"OK":"FAIL");
+	}
+	Delay_ms(5000);
+
+	Timer2_Init();
 	Attitude_Init();
 
-	/* 启动时读取ID，可用于上电自检（正常应为0x68） */
+	/* 启动传感器自检（中文显示） */
 	mpuId = MPU6050_GetID();
 	OLED_Clear();
-	OLED_ShowString(1, 1, "MPU ID:");
-	OLED_ShowHexNum(1, 8, mpuId, 2);
+	{
+		const uint8_t *label[] = {HZK_4F20, HZK_611F, HZK_5668};  /* 传感器 */
+		char hex[3];
+		OLED_ShowChineseStr(1, 1, label, 3);
+		OLED_ShowString(1, 5, ":");
+		hex[0] = "0123456789ABCDEF"[mpuId >> 4];
+		hex[1] = "0123456789ABCDEF"[mpuId & 0x0F];
+		hex[2] = '\0';
+		OLED_ShowString(1, 6, hex);
+	}
 	if (!MPU_ID_IsSupported(mpuId))
 	{
-		OLED_ShowString(2, 1, "MPU ERR");
-		OLED_ShowString(3, 1, "CHECK WIRE");
+		const uint8_t *err[] = {HZK_9519, HZK_8BEF};               /* 错误 */
+		const uint8_t *chk[] = {HZK_68C0, HZK_67E5, HZK_63A5, HZK_7EBF}; /* 检查接线 */
+		OLED_ShowChineseStr(2, 3, err, 2);
+		OLED_ShowChineseStr(3, 2, chk, 4);
 	}
 	else
 	{
-		OLED_ShowString(2, 1, "MPU OK");
+		const uint8_t *ok[] = {HZK_6B63, HZK_5E38};               /* 正常 */
+		OLED_ShowChineseStr(2, 3, ok, 2);
 	}
 	Delay_ms(300);
 
-	lastTick = TIM2->CNT;
-
 	while (1)
 	{
-		keyNum = Key_GetNum();
-		if (keyNum == 2)
-		{
-			ShowCalibratePage(0);
-			Attitude_CalibrateGyro();
-			ShowCalibratePage(1);
-			Delay_ms(300);
-			lastTick = TIM2->CNT;		// 校准耗时较长，重置时间基准
-		}
+		uint8_t menuRet = Menu_Show();
 
-		/* 按键1：切换旋转方向 */
-		if (keyNum == 1)
+		if (menuRet == 0)  /* 水平仪 → 3D cube */
 		{
-			rotationDir = -rotationDir;
-			dirChanged = 1;
-		}
-
-		/* 按键3（PA6）：向上切换显示图形 */
-		if (keyNum == 3)
-		{
-			shape = (shape + 1) % TOTAL_SHAPE_COUNT;
-			OLED_Clear();
-			if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
-			else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
-			else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
-			else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
-			else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
-			else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
-			else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
-			else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
-			else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
-			else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
-			else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
-			else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
-			else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
-			else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
-			else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
-			else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
-			else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
-			else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
-			else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
-			else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
-			else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
-			else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
-			else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
-			else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
-			else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
-			else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
-			else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
-			else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
-			else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
-			else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
-			else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
-			Delay_ms(400);
 			lastTick = TIM2->CNT;
-		}
 
-		/* 按键4（PA4）：向下切换显示图形 */
-		if (keyNum == 4)
+			while (1)
+			{
+				keyNum = Key_GetNum();
+
+				if (keyNum == 2)  /* PA2: 返回菜单 */
+					break;
+
+				if (keyNum == 1)  /* PB1: 切换旋转方向 */
+				{
+					rotationDir = -rotationDir;
+					dirChanged = 1;
+				}
+
+				if (keyNum == 3)  /* PA6: 下一个图形 */
+				{
+					shape = (shape + 1) % TOTAL_SHAPE_COUNT;
+					OLED_Clear();
+					if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
+					else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
+					else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
+					else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
+					else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
+					else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
+					else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
+					else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
+					else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
+					else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
+					else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
+					else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
+					else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
+					else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
+					else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
+					else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
+					else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
+					else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
+					else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
+					else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
+					else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
+					else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
+					else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
+					else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
+					else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
+					else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
+					else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
+					else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
+					else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
+					else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
+					else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
+					Delay_ms(400);
+					lastTick = TIM2->CNT;
+				}
+
+				if (keyNum == 4)  /* PA4: 上一个图形 */
+				{
+					shape = (shape + TOTAL_SHAPE_COUNT - 1) % TOTAL_SHAPE_COUNT;
+					OLED_Clear();
+					if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
+					else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
+					else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
+					else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
+					else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
+					else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
+					else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
+					else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
+					else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
+					else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
+					else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
+					else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
+					else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
+					else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
+					else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
+					else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
+					else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
+					else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
+					else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
+					else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
+					else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
+					else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
+					else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
+					else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
+					else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
+					else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
+					else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
+					else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
+					else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
+					else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
+					else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
+					Delay_ms(400);
+					lastTick = TIM2->CNT;
+				}
+
+				if (dirChanged)
+				{
+					ShowDirPage(rotationDir);
+					Delay_ms(400);
+					dirChanged = 0;
+					lastTick = TIM2->CNT;
+				}
+
+				curTick = TIM2->CNT;
+				dtSec = (float)(curTick - lastTick) / TIM2_CLOCK_HZ;
+				if (dtSec > DT_MAX_SEC) dtSec = DT_MAX_SEC;
+				if (dtSec < DT_MIN_SEC) dtSec = DT_MIN_SEC;
+				lastTick = curTick;
+
+				Attitude_Update(dtSec);
+				attitude = Attitude_Get();
+
+				Cube3D_Render(-attitude.PitchDeg * rotationDir,
+				              -attitude.RollDeg * rotationDir,
+				               attitude.YawDeg * rotationDir,
+				               shape, dtSec);
+			}
+		}
+		else if (menuRet == 1)  /* 月薪猫 */
 		{
-			shape = (shape + TOTAL_SHAPE_COUNT - 1) % TOTAL_SHAPE_COUNT;
-			OLED_Clear();
-			if (shape == SHAPE_CUBE)            OLED_ShowString(2, 4, "CUBE");
-			else if (shape == SHAPE_OCTAHEDRON)  OLED_ShowString(2, 4, "OCTA");
-			else if (shape == SHAPE_TETRAHEDRON) OLED_ShowString(2, 4, "TETRA");
-			else if (shape == SHAPE_DODECAHEDRON) OLED_ShowString(2, 4, "DODEC");
-			else if (shape == SHAPE_ICOSAHEDRON)  OLED_ShowString(2, 4, "ICOSA");
-			else if (shape == SHAPE_CUBOCTAHEDRON) OLED_ShowString(2, 4, "CUBOCT");
-			else if (shape == SHAPE_TRUNCATED_TETRA) OLED_ShowString(2, 4, "TRTET");
-			else if (shape == SHAPE_SMALL_STELLATED) OLED_ShowString(2, 4, "SSTEL");
-			else if (shape == SHAPE_GREAT_STELLATED) OLED_ShowString(2, 4, "GSTEL");
-			else if (shape == SHAPE_H3_7)  OLED_ShowString(2, 4, "{3,7}");
-			else if (shape == SHAPE_H3_8)  OLED_ShowString(2, 4, "{3,8}");
-			else if (shape == SHAPE_H4_5)  OLED_ShowString(2, 4, "{4,5}");
-			else if (shape == SHAPE_H5_4)  OLED_ShowString(2, 4, "{5,4}");
-			else if (shape == SHAPE_H4_6)  OLED_ShowString(2, 4, "{4,6}");
-			else if (shape == SHAPE_H6_4)  OLED_ShowString(2, 4, "{6,4}");
-			else if (shape == SHAPE_H5_5)  OLED_ShowString(2, 4, "{5,5}");
-			else if (shape == SHAPE_H5_6)  OLED_ShowString(2, 4, "{5,6}");
-			else if (shape == SHAPE_H6_5)  OLED_ShowString(2, 4, "{6,5}");
-			else if (shape == SHAPE_H7_3)  OLED_ShowString(2, 4, "{7,3}");
-			else if (shape == SHAPE_H8_3)  OLED_ShowString(2, 4, "{8,3}");
-			else if (shape == SHAPE_H3_10) OLED_ShowString(2, 4, "{3,10}");
-			else if (shape == SHAPE_H10_3) OLED_ShowString(2, 4, "{10,3}");
-			else if (shape == SHAPE_5_CELL)  OLED_ShowString(2, 4, "5CELL");
-			else if (shape == SHAPE_TESSERACT) OLED_ShowString(2, 4, "TESS");
-			else if (shape == SHAPE_16_CELL) OLED_ShowString(2, 4, "16CEL");
-			else if (shape == SHAPE_24_CELL) OLED_ShowString(2, 4, "24CEL");
-			else if (shape == SHAPE_600_CELL) OLED_ShowString(2, 4, "600CEL");
-			else if (shape == SHAPE_P600_STAR1) OLED_ShowString(2, 4, "S1{5,5/2,5}");
-			else if (shape == SHAPE_P600_STAR2) OLED_ShowString(2, 4, "S2{3,3,5/2}");
-			else if (shape == SHAPE_P600_STAR3) OLED_ShowString(2, 4, "S3{3,5/2,3}");
-			else                                OLED_ShowString(2, 4, "S4{5/2,3,5/2}");
-			Delay_ms(400);
-			lastTick = TIM2->CNT;
+			CatAnimation_Init();
+			CatAnimation_Play();
+			CatAnimation_Exit();
 		}
-
-		/* 切换后短暂显示方向状态 */
-		if (dirChanged)
-		{
-			ShowDirPage(rotationDir);
-			Delay_ms(400);
-			dirChanged = 0;
-			lastTick = TIM2->CNT;		// 防止OLED文字停留影响帧时间测量
-		}
-
-		/*
-		 * 主逻辑交互流程（每帧执行一次）：
-		 * A. 传感器模块：读取加速度与陀螺仪原始数据
-		 * B. 姿态模块：互补滤波，得到Pitch/Roll/Yaw
-		 * C. 3D模块：按姿态旋转魔方顶点，透视投影到OLED
-		 * D. 显示模块：绘制12条边，刷新屏幕
-		 */
-
-		/* TIM2测量实际帧时间，确保姿态积分与真实时间同步 */
-		curTick = TIM2->CNT;
-		dtSec = (float)(curTick - lastTick) / TIM2_CLOCK_HZ;
-		if (dtSec > DT_MAX_SEC) dtSec = DT_MAX_SEC;
-		if (dtSec < DT_MIN_SEC) dtSec = DT_MIN_SEC;
-		lastTick = curTick;
-
-		Attitude_Update(dtSec);
-		attitude = Attitude_Get();
-
-		/*
-		 * 姿态角 → 3D旋转的自然映射：
-		 *   PitchDeg（绕X轴）→ Cube3D 第一个参数（绕X轴旋转）
-		 *   RollDeg（绕Y轴） → Cube3D 第二个参数（绕Y轴旋转）
-		 *   YawDeg（绕Z轴）  → Cube3D 第三个参数（绕Z轴旋转）
-		 *
-		 * MPU6050 丝印与 STM32 开发板同方向时，由于芯片安装方向或布局差异，
-		 * X 和 Y 轴输出与视觉轴相反，此处做固定取反修正。
-		 * rotationDir 控制整体反向切换（Key 1）。
-		 */
-		Cube3D_Render(-attitude.PitchDeg * rotationDir,
-					  -attitude.RollDeg * rotationDir,
-					   attitude.YawDeg * rotationDir,
-					   shape, dtSec);
 	}
 }

@@ -33,3 +33,7 @@ Thumbs.db
 # Project specific
 keilkill.bat
 .claude/
+
+# Generated binaries
+w25q64_image.bin
+*_build.log

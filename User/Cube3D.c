@@ -1,10 +1,83 @@
 #include "Cube3D.h"
-#include "Cube3D_Hyperbolic.h"
-#include "Cube3D_4D.h"
 #include "OLED.h"
+#include "W25Q64.h"
+#include "W25Q64_Layout.h"
 #include <math.h>
+#include <stddef.h>
 
 #define DEG_TO_RAD      0.0174532925f
+
+/* W25Q64 图形数据缓冲: 600-cell 最大需 ~3360B */
+#define W25Q_SHAPE_BUF_SIZE  4096
+static uint8_t g_shapeBuf[W25Q_SHAPE_BUF_SIZE];
+
+/**
+  * @brief  从 W25Q64 加载外部图形数据到缓冲区
+  * @param  shapeId: SHAPE_xxx ID (9-30)
+  * @param  vtxCount: 输出顶点数
+  * @param  edgeCount: 输出边数
+  * @param  pVertices3D: 输出 3D 顶点指针 (仅 is4d=0 时有效)
+  * @param  pVertices4D: 输出 4D 顶点指针 (仅 is4d=1 时有效)
+  * @param  pEdges: 输出边指针
+  * @retval 1=成功, 0=失败
+  */
+static uint8_t W25Q64_LoadShape(uint8_t shapeId,
+                                 uint8_t *vtxCount, uint8_t *edgeCount,
+                                 const Vec3f_t **pVertices3D, const Vec4f_t **pVertices4D,
+                                 const uint8_t (**pEdges)[2])
+{
+    uint32_t addr;
+    uint16_t tableIdx, shapeCount;
+    uint8_t is4d;
+    uint16_t edCnt;
+
+    /* shapeId 映射到 W25Q64 表的索引 */
+    if (shapeId < SHAPE_H3_7 || shapeId > SHAPE_P600_STAR4)
+        return 0;
+    tableIdx = (uint16_t)(shapeId - SHAPE_H3_7);
+
+    /* 读形状表头: [2B count] [tableIdx × 4B offset] */
+    W25Q64_ReadData(W25Q_SHAPES_ADDR, (uint8_t*)&shapeCount, 2);
+    if (tableIdx >= shapeCount) return 0;
+
+    addr = W25Q_SHAPES_ADDR + 2 + (uint32_t)tableIdx * 4;
+    {
+        uint32_t offset;
+        W25Q64_ReadData(addr, (uint8_t*)&offset, 4);
+        addr = W25Q_SHAPES_ADDR + offset;
+    }
+
+    /* 读形状记录头: [1B is4d] [1B vtxCnt] [2B edgeCnt] */
+    W25Q64_ReadData(addr, &is4d, 1);
+    W25Q64_ReadData(addr + 1, vtxCount, 1);
+    W25Q64_ReadData(addr + 2, (uint8_t*)&edCnt, 2);
+    *edgeCount = (uint8_t)edCnt;
+
+    /* 计算数据大小 */
+    {
+        uint16_t vtxBytes = (uint16_t)(*vtxCount) * (is4d ? 16 : 12);
+        uint16_t edgeBytes = edCnt * 2;
+        uint16_t total = vtxBytes + edgeBytes;
+        if (total > W25Q_SHAPE_BUF_SIZE) return 0;
+
+        /* 读全部数据 */
+        W25Q64_ReadData(addr + 4, g_shapeBuf, total);
+
+        if (is4d)
+        {
+            *pVertices3D = NULL;
+            *pVertices4D = (Vec4f_t*)g_shapeBuf;
+            *pEdges = (const uint8_t(*)[2])(g_shapeBuf + vtxBytes);
+        }
+        else
+        {
+            *pVertices3D = (Vec3f_t*)g_shapeBuf;
+            *pVertices4D = NULL;
+            *pEdges = (const uint8_t(*)[2])(g_shapeBuf + vtxBytes);
+        }
+    }
+    return 1;
+}
 
 /* OLED显示中心与透视参数 */
 #define SCREEN_CX       64.0f
@@ -425,6 +498,14 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 	const Vec3f_t *vertices;
 	const uint8_t (*edges)[2];
 	Vec2i_t projected[HYPERBOLIC_MAX_VTX];
+
+	/* 外部图形缓存: 只在切换形状时从 W25Q64 加载 */
+	static uint8_t  s_extShape     = 0xFF;
+	static uint8_t  s_extVtxCount  = 0;
+	static uint8_t  s_extEdgeCount = 0;
+	static const Vec3f_t *s_extV3D = NULL;
+	static const Vec4f_t *s_extV4D = NULL;
+	static const uint8_t (*s_extEdges)[2] = NULL;
 	float zBuffer[HYPERBOLIC_MAX_VTX];
 	const Vec4f_t *verts4D = 0;
 	uint8_t idx0, idx1;
@@ -489,159 +570,38 @@ void Cube3D_Render(float pitchDeg, float rollDeg, float yawDeg, uint8_t shape, f
 		vtxCount = GSE_VTX_COUNT;
 		edgeCount = GSE_EDGE_COUNT;
 	}
-	else if (shape == SHAPE_H3_7)
+	else if (shape >= SHAPE_H3_7)  /* 从 W25Q64 动态加载（缓存） */
 	{
-		vertices = kH3_7Vertices;
-		edges    = kH3_7Edges;
-		vtxCount = H3_7_VTX_COUNT;
-		edgeCount = H3_7_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H3_8)
-	{
-		vertices = kH3_8Vertices;
-		edges    = kH3_8Edges;
-		vtxCount = H3_8_VTX_COUNT;
-		edgeCount = H3_8_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H4_5)
-	{
-		vertices = kH4_5Vertices;
-		edges    = kH4_5Edges;
-		vtxCount = H4_5_VTX_COUNT;
-		edgeCount = H4_5_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H5_4)
-	{
-		vertices = kH5_4Vertices;
-		edges    = kH5_4Edges;
-		vtxCount = H5_4_VTX_COUNT;
-		edgeCount = H5_4_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H4_6)
-	{
-		vertices = kH4_6Vertices;
-		edges    = kH4_6Edges;
-		vtxCount = H4_6_VTX_COUNT;
-		edgeCount = H4_6_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H6_4)
-	{
-		vertices = kH6_4Vertices;
-		edges    = kH6_4Edges;
-		vtxCount = H6_4_VTX_COUNT;
-		edgeCount = H6_4_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H5_5)
-	{
-		vertices = kH5_5Vertices;
-		edges    = kH5_5Edges;
-		vtxCount = H5_5_VTX_COUNT;
-		edgeCount = H5_5_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H5_6)
-	{
-		vertices = kH5_6Vertices;
-		edges    = kH5_6Edges;
-		vtxCount = H5_6_VTX_COUNT;
-		edgeCount = H5_6_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H6_5)
-	{
-		vertices = kH6_5Vertices;
-		edges    = kH6_5Edges;
-		vtxCount = H6_5_VTX_COUNT;
-		edgeCount = H6_5_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H7_3)
-	{
-		vertices = kH7_3Vertices;
-		edges    = kH7_3Edges;
-		vtxCount = H7_3_VTX_COUNT;
-		edgeCount = H7_3_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H8_3)
-	{
-		vertices = kH8_3Vertices;
-		edges    = kH8_3Edges;
-		vtxCount = H8_3_VTX_COUNT;
-		edgeCount = H8_3_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H3_10)
-	{
-		vertices = kH3_10Vertices;
-		edges    = kH3_10Edges;
-		vtxCount = H3_10_VTX_COUNT;
-		edgeCount = H3_10_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_H10_3)
-	{
-		vertices = kH10_3Vertices;
-		edges    = kH10_3Edges;
-		vtxCount = H10_3_VTX_COUNT;
-		edgeCount = H10_3_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_5_CELL)
-	{
-		verts4D  = kP5_CELLVertices;
-		edges    = kP5_CELLEdges;
-		vtxCount = P5_CELL_VTX_COUNT;
-		edgeCount = P5_CELL_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_TESSERACT)
-	{
-		verts4D  = kTESSERACTVertices;
-		edges    = kTESSERACTEdges;
-		vtxCount = TESSERACT_VTX_COUNT;
-		edgeCount = TESSERACT_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_16_CELL)
-	{
-		verts4D  = kP16_CELLVertices;
-		edges    = kP16_CELLEdges;
-		vtxCount = P16_CELL_VTX_COUNT;
-		edgeCount = P16_CELL_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_24_CELL)
-	{
-		verts4D  = kP24_CELLVertices;
-		edges    = kP24_CELLEdges;
-		vtxCount = P24_CELL_VTX_COUNT;
-		edgeCount = P24_CELL_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_600_CELL)
-	{
-		verts4D  = kP600_CELLVertices;
-		edges    = kP600_CELLEdges;
-		vtxCount = P600_CELL_VTX_COUNT;
-		edgeCount = P600_CELL_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_P600_STAR1)
-	{
-		verts4D  = kP600_STAR1Vertices;
-		edges    = kP600_STAR1Edges;
-		vtxCount = P600_STAR1_VTX_COUNT;
-		edgeCount = P600_STAR1_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_P600_STAR2)
-	{
-		verts4D  = kP600_STAR2Vertices;
-		edges    = kP600_STAR2Edges;
-		vtxCount = P600_STAR2_VTX_COUNT;
-		edgeCount = P600_STAR2_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_P600_STAR3)
-	{
-		verts4D  = kP600_STAR3Vertices;
-		edges    = kP600_STAR3Edges;
-		vtxCount = P600_STAR3_VTX_COUNT;
-		edgeCount = P600_STAR3_EDGE_COUNT;
-	}
-	else if (shape == SHAPE_P600_STAR4)
-	{
-		verts4D  = kP600_STAR4Vertices;
-		edges    = kP600_STAR4Edges;
-		vtxCount = P600_STAR4_VTX_COUNT;
-		edgeCount = P600_STAR4_EDGE_COUNT;
+		if (shape != s_extShape)
+		{
+			if (W25Q64_LoadShape(shape, &vtxCount, &edgeCount,
+			                      &vertices, &verts4D, &edges))
+			{
+				s_extShape     = shape;
+				s_extVtxCount  = vtxCount;
+				s_extEdgeCount = edgeCount;
+				s_extV3D       = vertices;
+				s_extV4D       = verts4D;
+				s_extEdges     = edges;
+			}
+			else
+			{
+				s_extShape = 0xFF;
+				vertices = kCubeVertices;
+				edges    = kCubeEdges;
+				vtxCount = CUBE_VTX_COUNT;
+				edgeCount = CUBE_EDGE_COUNT;
+				verts4D = NULL;
+			}
+		}
+		else
+		{
+			vtxCount  = s_extVtxCount;
+			edgeCount = s_extEdgeCount;
+			vertices  = s_extV3D;
+			verts4D   = s_extV4D;
+			edges     = s_extEdges;
+		}
 	}
 	else
 	{

@@ -64,8 +64,7 @@ static void MPU6050_ReadBurst(uint8_t RegAddress, uint8_t *pBuffer, uint8_t len)
 	MyI2C_ReceiveAck();					//接收应答
 	MyI2C_SendByte(RegAddress);			//发送起始寄存器地址
 	MyI2C_ReceiveAck();					//接收应答
-
-	MyI2C_Start();						//I2C重复起始
+MyI2C_Start();						//I2C重复起始
 	MyI2C_SendByte(MPU6050_ADDRESS | 0x01);	//发送从机地址，读写位为1（读）
 	MyI2C_ReceiveAck();					//接收应答
 
