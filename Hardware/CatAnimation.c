@@ -5,6 +5,7 @@
 #include "Key.h"
 #include "Delay.h"
 #include "W25Q64.h"
+#include "W25Q64_Layout.h"
 
 /**
   * @brief  初始化月薪猫动画（点亮红色LED）

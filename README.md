@@ -129,3 +129,16 @@ After power-on self-test, the main menu appears with 4 items: 水平仪 (level m
 - **新增主菜单界面**（Menu.c），支持光标导航，预留 电子罗盘/温度监测/计步器 入口
 - **KEY2 功能变更**：3D 立方体模式下按 KEY2 返回主菜单（原为重标定陀螺仪）
 - **PA2 上拉显式置位**：修复标准库 `GPIO_Init` 未正确设置 PA2 ODR 的问题
+
+### 2026-06-10
+- **新增 W25Q64 NOR Flash 驱动**（软件 SPI，PB12=CS, PB13=SCK, PB14=MOSI, PB15=MISO）
+- **新增月薪猫动画播放**（CatAnimation.c），28帧×1024字节存于 W25Q64，从Flash实时读取播放
+- **新增串口烧录系统**（serial.c + Tools/serial_flash.py），USART1/2 配合实现 PC→STM32→Flash 烧录
+- **新增镜像打包工具**（Tools/flash_image_builder.py），自动解析 C 头文件打包 w25q64_image.bin
+- **新增 GIF 转 OLED 帧工具**（convert_cat.py），支持透明背景处理
+- **新增中文菜单系统**（Menu.c），4 项菜单：水平仪 / 月薪猫 / 温度监测(预留) / 计步器(预留)
+- **新增中文字库支持**（FontCN.c），54 个常用汉字 16×16 点阵
+- **W25Q64 状态寄存器完整诊断**：SR1/SR2/SR3 三个寄存器解码（SRP/WEL/BUSY/BP 位）
+- **修复 DO/DI 引脚标注问题**：模块丝印是从主设备视角标注，DO=STM32 MOSI→PB14，DI=STM32 MISO→PB15
+- **MPU6050 优化**：新增 burst 连续读取模式，一次 I2C 事务读 14 字节，效率提升 10 倍
+- **OLED I2C 增强**：超时保护 + 总线恢复（SWRST + 9 个 SCK 脉冲）+ 自动重试

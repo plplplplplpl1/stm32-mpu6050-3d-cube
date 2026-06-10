@@ -58,8 +58,9 @@ int main(void)
 	/* MPU6050从睡眠唤醒后需等待时钟和MEMS稳定（datasheet: 30ms min） */
 	Delay_ms(100);
 
-	/* ── W25Q64 诊断 ── */
+	/* ── W25Q64 初始化 ── */
 	W25Q64_Init();
+#if 0  /* W25Q64 诊断 + 串口烧录 — 需要时改为 1 */
 	Serial_FlashBurn();
 	OLED_Clear();
 	{
@@ -70,7 +71,6 @@ int main(void)
 		h[0]="0123456789ABCDEF"[tp>>4]; h[1]="0123456789ABCDEF"[tp&0xF]; OLED_ShowString(1,4,h);
 		h[0]="0123456789ABCDEF"[c>>4]; h[1]="0123456789ABCDEF"[c&0xF]; OLED_ShowString(1,6,h);
 		OLED_ShowString(1,9,"OK");
-
 		s1=W25Q64_ReadSR1(); s2=W25Q64_ReadSR2(); s3=W25Q64_ReadSR3();
 		OLED_ShowString(2,0,"S");
 		h[0]="0123456789ABCDEF"[s1>>4]; h[1]="0123456789ABCDEF"[s1&0xF]; h[2]=0; OLED_ShowString(2,1,h);
@@ -82,14 +82,12 @@ int main(void)
 		OLED_ShowString(2,12,(s1&0x02)?"W+":"W-");
 		OLED_ShowString(2,14,(s1&0x01)?"B+":"B-");
 		h[0]="0123456789ABCDEF"[(s1>>2)&0xF]; h[1]=0; OLED_ShowString(2,16,h);
-
 		W25Q64_WriteEnable(); s1=W25Q64_ReadSR1();
 		OLED_ShowString(3,0,"WE");
 		h[0]="0123456789ABCDEF"[s1>>4]; h[1]="0123456789ABCDEF"[s1&0xF]; h[2]=0; OLED_ShowString(3,2,h);
 		OLED_ShowString(3,5,(s1&0x80)?"P+":"P-");
 		OLED_ShowString(3,7,(s1&0x02)?"WEL=1":"WEL0");
 		OLED_ShowString(3,12,(s1&0x01)?"BUSY":"-");
-
 		W25Q64_SectorErase(W25Q_CALIB_ADDR);
 		W25Q64_WriteEnable();
 		d[0]=0xA5; d[1]=0x5A; d[2]=0x3C; d[3]=0xC3;
@@ -104,6 +102,7 @@ int main(void)
 		OLED_ShowString(4,9,(d[0]==0xA5)?"OK":"FAIL");
 	}
 	Delay_ms(5000);
+#endif
 
 	Timer2_Init();
 	Attitude_Init();
