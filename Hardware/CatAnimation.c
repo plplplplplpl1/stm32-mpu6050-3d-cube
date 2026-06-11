@@ -20,25 +20,25 @@ void CatAnimation_Init(void)
 /**
   * @brief  播放月薪猫动画循环
   * @note   从 W25Q64 读取帧数据，绕开 OLED_GRAM 直接写 GDDRAM
-  *         按键KEY2（PA2）退出，返回菜单
   * @param  无
-  * @retval 无
+  * @retval 返回触发退出的按键码: 2=KEY2返回菜单, 3=KEY3下一个动画, 4=KEY4上一个动画
   */
-void CatAnimation_Play(void)
+uint8_t CatAnimation_Play(void)
 {
     uint16_t frame = 0;
     uint8_t page;
-    uint8_t exitReq = 0;
+    uint8_t exitKey = 0;
     uint8_t tick;
+    uint8_t key;
     uint8_t frameBuf[CAT_FRAME_SIZE];  /* 1024B 栈缓冲 */
 
-    while (!exitReq)
+    while (!exitKey)
     {
         /* 从 W25Q64 读取当前帧 */
         W25Q64_ReadData(W25Q_CATFRAMES_ADDR + (uint32_t)frame * CAT_FRAME_SIZE,
                         frameBuf, CAT_FRAME_SIZE);
 
-        /* 逐页写 GDDRAM（直接 I2C 突发传输） */
+        /* 逐页写 GDDRAM（页寻址模式，每页 128 字节独立 I2C 事务） */
         for (page = 0; page < 8; page++)
         {
             OLED_SetCursor(page, 0);
@@ -52,17 +52,30 @@ void CatAnimation_Play(void)
         for (tick = 0; tick < CAT_FRAME_DELAY_MS / 10; tick++)
         {
             Delay_ms(10);
-            if (Key_GetNum() == 2)
+            key = Key_GetNum();
+            if (key == 2 || key == 3 || key == 4)
             {
-                exitReq = 1;
+                exitKey = key;
                 break;
             }
         }
     }
+    return exitKey;
 }
 
 /**
-  * @brief  退出月薪猫动画（关LED，清屏）
+  * @brief  停止月薪猫动画（关LED，清屏），用于动画间快速切换
+  * @param  无
+  * @retval 无
+  */
+void CatAnimation_Stop(void)
+{
+    LED1_OFF();
+    /* 不清屏 — Anim_ShowLabel 会立即覆盖显示标签，清屏反而造成黑屏闪烁 */
+}
+
+/**
+  * @brief  退出月薪猫动画（关LED，重置OLED控制器），用于返回菜单
   * @param  无
   * @retval 无
   */

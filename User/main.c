@@ -7,7 +7,7 @@
 #include "Cube3D.h"
 #include "FontCN.h"
 #include "Menu.h"
-#include "CatAnimation.h"
+#include "Animation.h"
 #include "W25Q64.h"
 #include "W25Q64_Layout.h"
 #include "serial.h"
@@ -256,11 +256,9 @@ int main(void)
 				               shape, dtSec);
 			}
 		}
-		else if (menuRet == 1)  /* 月薪猫 */
+		else if (menuRet == 1)  /* 动画 */
 		{
-			CatAnimation_Init();
-			CatAnimation_Play();
-			CatAnimation_Exit();
+			Animation_Show();
 		}
 	}
 }

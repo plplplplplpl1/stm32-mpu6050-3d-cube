@@ -9,11 +9,11 @@
 
 static const uint8_t *g_menuCN[MENU_COUNT][4] = {
 	{HZK_6C34, HZK_5E73, HZK_4EEA, 0},                 /* 水平仪 */
-	{HZK_YUE, HZK_XIN, HZK_MAO, 0},                     /* 月薪猫 */
+	{HZK_52A8, HZK_753B, 0, 0},                           /* 动画 */
 	{HZK_6E29, HZK_5EA6, HZK_76D1, HZK_6D4B},           /* 温度监测 */
 	{HZK_8BA1, HZK_6B65, HZK_5668, 0}                   /* 计步器 */
 };
-static const uint8_t g_menuCNLen[MENU_COUNT] = {3, 3, 4, 3};
+static const uint8_t g_menuCNLen[MENU_COUNT] = {3, 2, 4, 3};
 static const uint8_t g_menuAvail[MENU_COUNT] = {1, 1, 0, 0};
 
 void Menu_Init(void)

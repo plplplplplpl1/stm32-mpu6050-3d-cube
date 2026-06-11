@@ -53,9 +53,16 @@ Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup .s
 
 ## Cat Animation (月薪猫)
 
-- `Tools/convert_cat.py` converts `cat.GIF` → `Hardware/CatFrames.h` (28 frames, 1024B each)
+- `convert_cat.py` (root) or `Tools/gif_to_oled.py` (more feature-rich) converts `cat.GIF` → `Hardware/CatFrames.h` (28 frames, 1024B each)
 - `CatAnimation_Play()` reads frames from W25Q64 in real-time, writes directly to SSD1306 GDDRAM
 - KEY2 returns to menu; LED1 on during playback
+
+## Shape Data Generators (Tools/)
+
+- `Tools/gen_4d_cell.py` — generates 4D regular polytope vertex/edge data (5-cell, tesseract, 16/24/600-cell, Schläfli-Hess star forms) as C header arrays
+- `Tools/gen_hyperbolic.py` — generates {p,q} hyperbolic tiling vertex/edge data for the 12 hyperbolic tessellations
+- `Tools/flash_image_builder.py` — packs C header data into `w25q64_image.bin` for serial flashing
+- `Tools/serial_flash.py` — USB-TTL serial flash tool (`python Tools/serial_flash.py COMx`)
 
 ## Known Pitfalls
 
@@ -64,3 +71,36 @@ Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup .s
 - **OLED I2C**: Enhanced with timeout + bus recovery (SWRST + 9 SCK pulses) + auto-retry
 - **MPU6050**: Uses burst read (14 bytes in one I2C transaction), auto-increment mode
 - **MENU KEY2**: PA2 (NOT PB12 as older README versions stated)
+- **Key debounce**: Non-blocking counter-based (`DEBOUNCE_CNT=3`); call interval ≤20ms for ~30ms effective debounce. Do NOT use `Delay_ms` in `Key_GetNum()` — it blocks the main loop and interferes with SysTick.
+- **PA2 pull-up**: Standard library `GPIO_Init` may not set ODR correctly for PA2; `GPIOA->BSRR = GPIO_Pin_2` is explicitly set after init.
+- **MPU6050 clock source**: `PWR_MGMT_1` = `0x00` (internal 8MHz RC). Do NOT use `0x01` (X-axis gyro PLL) — unreliable startup.
+- **W25Q64 write debugging**: See `doc/W25Q64调试报告.md` for hardware-level diagnosis history (JEDEC OK, WEL stuck low, etc.) — if writes mysteriously fail, check that WP/HOLD are pulled high on the module.
+
+## OLED Refresh — Camera Tearing Fix (2026-06-11)
+
+SSD1306 only has one GDDRAM (no double-buffer, no VSYNC). The scan pointer (~100Hz) and I2C write run asynchronously, so tearing is inevitable. But page-by-page writes create 8 fixed tear lines that cameras capture as obvious raster bars.
+
+**Solution**: `OLED_Refresh()` temporarily switches to horizontal addressing mode (`0x20,0x00`), sets column/page ranges (`0x21`/`0x22`), bursts all 1024 bytes in a single I2C transaction, then switches back to page addressing mode (`0x20,0x02`). This reduces 8 fixed tear lines to 1-2 random-position tears — barely visible to cameras.
+
+**Critical**: All other code (text, menu, CatAnimation) stays in page addressing mode. Never globally enable horizontal mode — the `OLED_SetCursor` commands (`0xB0`, `0x00`, `0x10`) are page-mode-specific and break on clone chips.
+
+## Font Format — HZK16 Row-Major
+
+Chinese font data in `FontCN.c` is stored in **HZK16 row-major format**: 32 bytes = 16 rows × 2 bytes per row, MSB = leftmost pixel. `OLED_ShowChinese16()` transposes to SSD1306 page-column on the fly.
+
+Do NOT store SSD1306 page-column format in the font arrays — the existing font data and rendering function both use row-major. Mixing formats = garbled display.
+
+Font generation command: SimSun 12pt via PIL, render to 16×16 1-bit, extract row-major bytes. See `Tools/gen_font.py`.
+
+## Multi-Animation System (2026-06-11)
+
+`Animation.c` — switchable animation player. Switching logic modeled on shape switching in the cube view:
+- `OLED_Clear()` + direct GDDRAM write (no framebuffer) + `Delay_ms(400)`
+- KEY3/KEY4 cycles animations; KEY2 returns to menu
+- No stop/init cycle during switching (unlike original design which caused black flash)
+- Current animations: only `ANIM_CAT` (月薪猫)
+- To add a new GIF: add frame data to W25Q64, create an entry in `g_anims[]`, bump `ANIM_COUNT`
+
+## Build Cleanup
+
+Run `keilkill.bat` to remove intermediate build artifacts (`Objects/`, `Listings/`, `*.lst`, `*.build_log`).

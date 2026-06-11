@@ -375,12 +375,14 @@ void OLED_Init(void)
   */
 void OLED_Refresh(void)
 {
-	uint8_t j;
-	for (j = 0; j < 8; j++)
-	{
-		OLED_SetCursor(j, 0);
-		OLED_WriteDataBurst(OLED_GRAM[j], 128);
-	}
+	/* 临时切到水平寻址模式 → 单次突发写 1024 字节 → 切回页寻址模式 */
+	OLED_WriteCommand(0x20); OLED_WriteCommand(0x00);	/* 水平寻址 */
+	OLED_WriteCommand(0x21); OLED_WriteCommand(0x00); OLED_WriteCommand(0x7F);	/* 列 0-127 */
+	OLED_WriteCommand(0x22); OLED_WriteCommand(0x00); OLED_WriteCommand(0x07);	/* 页 0-7 */
+
+	OLED_WriteDataBurst(&OLED_GRAM[0][0], 1024);
+
+	OLED_WriteCommand(0x20); OLED_WriteCommand(0x02);	/* 切回页寻址模式 */
 }
 
 /**
