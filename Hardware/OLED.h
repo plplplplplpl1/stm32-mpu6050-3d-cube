@@ -15,5 +15,6 @@ void OLED_DrawLineGray(int16_t X0, int16_t Y0, int16_t X1, int16_t Y1, uint8_t l
 void OLED_Refresh(void);
 void OLED_SetCursor(uint8_t Y, uint8_t X);
 void OLED_WriteDataBurst(const uint8_t *pData, uint16_t len);
+void OLED_ShowCharBuf(uint8_t Line, uint8_t Column, char Char);
 
 #endif

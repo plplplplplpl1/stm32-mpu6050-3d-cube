@@ -11,6 +11,7 @@
 #include "W25Q64.h"
 #include "W25Q64_Layout.h"
 #include "serial.h"
+#include <math.h>
 
 #define TIM2_CLOCK_HZ       1000000UL
 #define DT_MAX_SEC          0.2f
@@ -61,8 +62,9 @@ int main(void)
 	/* ── W25Q64 初始化 ── */
 	W25Q64_Init();
 
-	/* 上电检测串口烧录（3 秒超时，无 PC 连接则跳过） */
+	#if 0  /* 串口烧录 — 需要时改为 1 */
 	Serial_FlashBurn();
+#endif
 
 #if 0  /* W25Q64 诊断 — 需要时改为 1 */
 	OLED_Clear();
@@ -141,9 +143,18 @@ int main(void)
 	{
 		uint8_t menuRet = Menu_Show();
 
-		if (menuRet == 0)  /* 水平仪 → 3D cube */
-		{
-			lastTick = TIM2->CNT;
+			if (menuRet == 0)  /* 3D&2D */
+			{
+				while (1)
+				{
+				uint8_t subRet = Menu_Show3D2D();
+
+				if (subRet == 2)  /* 返回主菜单 */
+					break;
+
+				if (subRet == 0)  /* 3D */
+				{
+				lastTick = TIM2->CNT;
 
 			while (1)
 			{
@@ -258,8 +269,93 @@ int main(void)
 				               attitude.YawDeg * rotationDir,
 				               shape, dtSec);
 			}
-		}
-		else if (menuRet == 1)  /* 动画 */
+				}
+				else  /* 2D — 三角函数 / 指数函数 */
+				{
+					const uint8_t *trig[] = {HZK_4E09, HZK_89D2, HZK_51FD, HZK_6570};
+					const uint8_t *expn[] = {HZK_6307, HZK_6570, HZK_51FD, HZK_6570};
+					uint8_t cur2d = 0;
+					OLED_Clear();
+					OLED_ShowString(2, 1, ">");
+					OLED_ShowChineseStr(2, 2, trig, 4);
+					OLED_ShowString(3, 1, " ");
+					OLED_ShowChineseStr(3, 2, expn, 4);
+
+					while (1)
+					{
+						keyNum = Key_GetNum();
+						if (keyNum == 2)  /* PA2: 返回子菜单 */
+							break;
+						if (keyNum == 3 || keyNum == 4)  /* 上下切换 */
+						{
+							cur2d = cur2d ? 0 : 1;
+							OLED_ShowString(2, 1, cur2d == 0 ? ">" : " ");
+							OLED_ShowString(3, 1, cur2d == 0 ? " " : ">");
+						}
+						if (keyNum == 1)  /* 確認 */
+						{
+							if (cur2d == 0)  /* 三角函數 — y=sin(t) */
+							{
+								float t0 = 0.0f;
+								int16_t x;
+								float tVal, yVal;
+								int16_t px, py;
+
+								while (1)
+								{
+									OLED_ClearBuffer();
+									/* y轴(竖) + 上箭头 */
+									OLED_DrawLine(32, 0, 32, 63, 1);
+									OLED_DrawLine(31, 5, 32,  0, 1);
+									OLED_DrawLine(33, 5, 32,  0, 1);
+									/* t轴(横) + 右箭头 */
+									OLED_DrawLine( 0,32,127, 32, 1);
+									OLED_DrawLine(122,31,127, 32, 1);
+									OLED_DrawLine(122,33,127, 32, 1);
+
+									for (x = 0; x < 128; x++)
+									{
+										tVal = t0 + (float)(x - 32) / 10.0f;
+										yVal = sinf(tVal);
+										px = x;
+										py = 32 - (int16_t)(yVal * 20.0f);
+										OLED_DrawPoint(px, py, 1);
+									}
+									/* 标签 t, y (写入缓冲，随 Refresh 刷新) */
+									OLED_ShowCharBuf(1, 4, 'y');
+									OLED_ShowCharBuf(3, 15, 't');
+									OLED_Refresh();
+
+									if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_1) == 0)
+										t0 -= 0.01f;
+									if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6) == 0)
+										t0 += 0.01f;
+									if (Key_GetNum() == 2)
+										break;
+
+									Delay_ms(10);
+								}
+							}
+							else
+							{
+								OLED_Clear();
+								OLED_ShowChineseStr(2, 3, expn, 4);
+								OLED_ShowString(3, 3, "WIP");
+								while (Key_GetNum() == 0);
+								Delay_ms(200);
+							}
+							OLED_Clear();
+							OLED_ShowString(2, 1, cur2d == 0 ? ">" : " ");
+							OLED_ShowChineseStr(2, 2, trig, 4);
+							OLED_ShowString(3, 1, cur2d == 0 ? " " : ">");
+							OLED_ShowChineseStr(3, 2, expn, 4);
+						}
+						Delay_ms(10);
+					}
+				}
+				}  /* sub-menu while(1) */
+			}
+			else if (menuRet == 1)  /* 动画 */
 		{
 			Animation_Show();
 		}

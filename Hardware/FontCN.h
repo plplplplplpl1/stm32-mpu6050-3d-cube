@@ -70,6 +70,11 @@ extern const uint8_t HZK_753B[32];  /* 画 */
 /* === 蟑螂动画 (2026-06-14) === */
 extern const uint8_t HZK_87E5[32];  /* 蟑 */
 extern const uint8_t HZK_8782[32];  /* 螂 */
+extern const uint8_t HZK_4E09[32];  /* 三 */
+extern const uint8_t HZK_89D2[32];  /* 角 */
+extern const uint8_t HZK_51FD[32];  /* 函 */
+extern const uint8_t HZK_6570[32];  /* 数 */
+extern const uint8_t HZK_6307[32];  /* 指 */
 
 void OLED_ShowChineseStr(uint8_t Line, uint8_t Column, const uint8_t **Fonts, uint8_t Count);
 

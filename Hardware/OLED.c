@@ -240,15 +240,34 @@ void OLED_ShowChar(uint8_t Line, uint8_t Column, char Char)
 	{
 		OLED_WriteData(OLED_F8x16[Char - ' '][i + 8]);		//显示下半部分内容
 	}
-}
 
-/**
-  * @brief  OLED显示字符串
-  * @param  Line 起始行位置，范围：1~4
-  * @param  Column 起始列位置，范围：1~16
-  * @param  String 要显示的字符串，范围：ASCII可见字符
-  * @retval 无
-  */
+	}
+
+	/**
+	  * @brief  将 ASCII 字符写入 OLED_GRAM 缓冲区（不刷新屏幕）
+	  * @param  Line 行位置，范围：1~4
+	  * @param  Column 列位置，范围：1~16
+	  * @param  Char 要显示的字符
+	  */
+	void OLED_ShowCharBuf(uint8_t Line, uint8_t Column, char Char)
+	{
+		uint8_t page = (Line - 1) * 2;
+		uint8_t col  = (Column - 1) * 8;
+		uint8_t i;
+		uint8_t idx = Char - ' ';
+		for (i = 0; i < 8; i++)
+			OLED_GRAM[page][col + i] |= OLED_F8x16[idx][i];
+		for (i = 0; i < 8; i++)
+			OLED_GRAM[page + 1][col + i] |= OLED_F8x16[idx][i + 8];
+	}
+
+	/**
+	  * @brief  OLED显示字符串
+	  * @param  Line 起始行位置，范围：1~4
+	  * @param  Column 起始列位置，范围：1~16
+	  * @param  String 要显示的字符串，范围：ASCII可见字符
+	  * @retval 无
+	  */
 void OLED_ShowString(uint8_t Line, uint8_t Column, char *String)
 {
 	uint8_t i;
