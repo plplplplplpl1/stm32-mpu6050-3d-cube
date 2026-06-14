@@ -264,9 +264,9 @@ int main(void)
 				Attitude_Update(dtSec);
 				attitude = Attitude_Get();
 
-				Cube3D_Render(-attitude.PitchDeg * rotationDir,
-				              -attitude.RollDeg * rotationDir,
-				               attitude.YawDeg * rotationDir,
+				Cube3D_Render(-attitude.RollDeg * rotationDir,
+				               attitude.PitchDeg * rotationDir,
+				              -attitude.YawDeg * rotationDir,
 				               shape, dtSec);
 			}
 				}
