@@ -151,7 +151,7 @@ void Serial_FlashBurn(void)
                                 p++;
                             }
                         }
-                        if (totalSize > 0 && totalSize <= 128 * 1024)
+                        if (totalSize > 0 && totalSize <= 256 * 1024)
                         {
                             gotSize = 1;
                             break;
@@ -180,7 +180,7 @@ void Serial_FlashBurn(void)
     /* ── 擦除 ── */
     {
         uint32_t endAddr = (totalSize + 4095) & ~4095UL;
-        if (endAddr > W25Q_CALIB_ADDR) endAddr = W25Q_CALIB_ADDR;
+        if (endAddr > W25Q_RESERVED_ADDR) endAddr = W25Q_RESERVED_ADDR;
 
         for (addr = 0; addr < endAddr; addr += 4096)
         {

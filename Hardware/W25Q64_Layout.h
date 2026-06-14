@@ -29,7 +29,13 @@
 #define W25Q_CALIB_ADDR             0x01C000UL
 #define W25Q_CALIB_SIZE             0x001000UL  /* 4KB */
 
+/* ── 蟑螂动画帧: 28帧 × 1024B ── */
+#define W25Q_COCKROACHFRAMES_ADDR   0x01D000UL
+#define W25Q_COCKROACHFRAMES_SIZE   0x007000UL  /* 28KB */
+#define W25Q_COCKROACHFRAME_COUNT   28
+#define W25Q_COCKROACHFRAME_SIZE    1024
+
 /* ── 预留扩展 ── */
-#define W25Q_RESERVED_ADDR          0x01D000UL
+#define W25Q_RESERVED_ADDR          0x024000UL
 
 #endif

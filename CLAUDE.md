@@ -22,12 +22,62 @@ Build from command line via the `/build-keil` skill or open the `.uvprojx` in uV
 ## Architecture — Layer Model
 
 ```
-User/          main.c, Attitude (complementary filter), Cube3D (3D/4D render)
-Hardware/      MPU6050, MyI2C (software I2C), OLED (SSD1306), Key, LED, FontCN, Menu
+User/          main.c, Attitude (complementary filter), Cube3D (3D/4D render), stm32f10x_it
+Hardware/      MPU6050, MyI2C (software I2C), OLED (SSD1306), Key, LED, FontCN, Menu,
+               W25Q64 (SPI NOR flash), serial (UART), CatAnimation, Animation,
+               Cube3D_4D.h, Cube3D_Hyperbolic.h (auto-generated shape data)
 System/        Delay (SysTick-based μs/ms delay)
-Library/       STM32 Standard Peripheral Library V3.x (SPL) — full set
-Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup .s
+Library/       STM32 Standard Peripheral Library V3.5.0 (SPL) — full set
+Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup_md.s
 ```
+
+## Startup Sequence
+
+```
+main() → OLED_Init → Key_Init → MPU6050_Init → Delay_ms(100)  // 等MEMS稳定
+       → W25Q64_Init → Timer2_Init → Attitude_Init  // 尝试从Flash加载校准，失败则标定
+       → MPU6050_GetID() → 显示传感器状态(中文) → Menu_Show()
+       → Menu选项0: 水平仪(旋转3D图形) / Menu选项1: 动画播放
+```
+
+## Button Mapping
+
+| Key | Pin | Cube/Level View | Menu | Animation |
+|-----|-----|-----------------|------|-----------|
+| Key1 | PB1 | 切换旋转方向 | 确认 | — |
+| Key2 | PA2 | 返回菜单 | — | 返回菜单 |
+| Key3 | PA6 | 下一个图形 | 上 | 上一个动画 |
+| Key4 | PA4 | 上一个图形 | 下 | 下一个动画 |
+
+按键消抖：计数式非阻塞（`DEBOUNCE_CNT=3`），调用间隔 ≤20ms → 有效消抖约 30ms。**严禁**在 `Key_GetNum()` 中使用 `Delay_ms`。
+
+## MPU6050 Configuration (Init)
+
+| Register | Value | Meaning |
+|----------|-------|---------|
+| `PWR_MGMT_1` | `0x00` | 退出睡眠，时钟源=内部8MHz RC |
+| `PWR_MGMT_2` | `0x00` | 六轴均不休眠 |
+| `SMPLRT_DIV` | `0x09` | 采样率 = 1kHz / (1+9) = 100Hz |
+| `CONFIG` | `0x06` | DLPF_CFG=6, BW=5Hz (加速度), 陀螺延迟~19ms |
+| `GYRO_CONFIG` | `0x18` | 满量程 ±2000°/s, 灵敏度 16.4 LSB/(°/s) |
+| `ACCEL_CONFIG` | `0x18` | 满量程 ±16g, 灵敏度 2048 LSB/g |
+
+## Attitude Filter (Attitude.c)
+
+**互补滤波**：陀螺积分(99.9%) + 加速度修正(0.1%)，`alpha = 0.999`。
+- Pitch/Roll/Yaw内部命名非标准 — "PitchDeg"实际存绕X轴旋转，"RollDeg"存绕Y轴旋转，**这是与Cube3D渲染轴映射的约定，不要单独修改一处**。
+- 陀螺校准：上电采集300样本求零偏 → 存W25Q64（`0x01C000`，含magic `0xCA11B400`）。下次开机直接加载，跳过2s标定。
+- 防抖保护：dt异常时回退到10ms默认值；角度约束到 ±180° 防止数值累积。
+- Yaw轴使用纯陀螺积分（无磁力计修正）实现真正三维联动。
+
+## Cube3D Rendering
+
+31种图形分三类，`Cube3D_4D.h` 和 `Cube3D_Hyperbolic.h` 由 Python 工具**自动生成**，不要手改：
+- **正多面体**(5)：立方体、八面体、四面体、十二面体、二十面体
+- **双曲密铺**(12)：{p,q} 施莱夫利符号对，如 {3,7} {3,8} {4,5} {5,4} 等
+- **4D正多胞体及星形**(14)：5-cell、超立方体、16/24/600-cell、Schläfli-Hess 星形等
+
+渲染管线：`Cube3D_Render(pitch, roll, yaw, shape, dt)` — 旋转矩阵投影 → Bresenham画线到OLED缓冲 → `OLED_Refresh()` 整屏刷新。
 
 ## Two I2C Buses — Critical Design Decision
 
@@ -48,6 +98,7 @@ Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup .s
   - `0x017000` Chinese font (16KB)
   - `0x01B000` ASCII font (4KB)
   - `0x01C000` Calibration data (4KB)
+  - `0x01D000` Cockroach frames (28×1024B = 28KB)
 - **Boot diagnostic**: `#if 0`-disabled in main.c; change to `#if 1` to re-enable JEDEC/SR/write test
 - **Serial flashing**: `python Tools/serial_flash.py COMx` — requires USB-TTL (TX→PA3, RX←PA9, GND↔GND). STM32 boots into `Serial_FlashBurn()` for 3s timeout. Image built via `python Tools/flash_image_builder.py`.
 
@@ -92,14 +143,14 @@ Do NOT store SSD1306 page-column format in the font arrays — the existing font
 
 Font generation command: SimSun 12pt via PIL, render to 16×16 1-bit, extract row-major bytes. See `Tools/gen_font.py`.
 
-## Multi-Animation System (2026-06-11)
+## Multi-Animation System (2026-06-11, updated 2026-06-14)
 
 `Animation.c` — switchable animation player. Switching logic modeled on shape switching in the cube view:
 - `OLED_Clear()` + direct GDDRAM write (no framebuffer) + `Delay_ms(400)`
 - KEY3/KEY4 cycles animations; KEY2 returns to menu
 - No stop/init cycle during switching (unlike original design which caused black flash)
-- Current animations: only `ANIM_CAT` (月薪猫)
-- To add a new GIF: add frame data to W25Q64, create an entry in `g_anims[]`, bump `ANIM_COUNT`
+- Current animations: `ANIM_CAT` (月薪猫), `ANIM_COCKROACH` (蟑螂)
+- To add a new GIF: add frame data to W25Q64, create an `XxxAnimation.c/h` module following the `CatAnimation` pattern, add an entry in `g_anims[]`, bump `ANIM_COUNT`
 
 ## Build Cleanup
 

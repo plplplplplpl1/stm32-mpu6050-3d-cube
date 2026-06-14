@@ -785,6 +785,21 @@
               <FileType>1</FileType>
               <FilePath>.\Hardware\Animation.c</FilePath>
             </File>
+            <File>
+              <FileName>CockroachAnimation.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\CockroachAnimation.c</FilePath>
+            </File>
+            <File>
+              <FileName>CockroachAnimation.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Hardware\CockroachAnimation.h</FilePath>
+            </File>
+            <File>
+              <FileName>CockroachFrames.h</FileName>
+              <FileType>5</FileType>
+              <FilePath>.\Hardware\CockroachFrames.h</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

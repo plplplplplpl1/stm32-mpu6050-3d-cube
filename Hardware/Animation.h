@@ -4,8 +4,9 @@
 #include "stm32f10x.h"
 
 /* 动画列表 */
-#define ANIM_COUNT  1        /* 当前动画总数 */
-#define ANIM_CAT    0        /* 月薪猫 */
+#define ANIM_COUNT      2        /* 当前动画总数 */
+#define ANIM_CAT        0        /* 月薪猫 */
+#define ANIM_COCKROACH  1        /* 蟑螂 */
 
 void Animation_Show(void);
 

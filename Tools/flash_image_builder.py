@@ -16,11 +16,12 @@ from pathlib import Path
 
 # ── 分区地址 (与 Hardware/W25Q64_Layout.h 保持一致) ──
 ADDR_CATFRAMES      = 0x000000
+ADDR_COCKROACHFRAMES = 0x01D000
 ADDR_SHAPES         = 0x007000
 ADDR_FONT_CN        = 0x017000
 ADDR_FONT_ASCII     = 0x01B000
 ADDR_CALIB          = 0x01C000
-IMAGE_SIZE          = 0x01D000  # 116KB, 只包含有用分区
+IMAGE_SIZE          = 0x024000  # 144KB
 
 # ── 工具函数 ────────────────────────────────────
 
@@ -61,6 +62,31 @@ def extract_catframes(hw_dir):
         all_bytes = all_bytes[:expected]
 
     print(f"  CatFrames: {frame_count} 帧 × {frame_size}B = {len(all_bytes)}B")
+    return all_bytes
+
+# ── CockroachFrames 解析 ──────────────────────────
+
+def extract_cockroachframes(hw_dir):
+    """从 CockroachFrames.h 提取 28 帧 × 1024 字节"""
+    path = hw_dir / "CockroachFrames.h"
+    if not path.exists():
+        print("  CockroachFrames: 未找到, 跳过")
+        return b''
+
+    text = path.read_text(encoding='utf-8', errors='replace')
+    count_m = re.search(r'#define\s+COCKROACH_FRAME_COUNT\s+(\d+)', text)
+    frame_count = int(count_m.group(1)) if count_m else 28
+
+    all_bytes = parse_hex_bytes(text)
+    frame_size = 1024
+    expected = frame_count * frame_size
+
+    if len(all_bytes) < expected:
+        print(f"  WARN CockroachFrames: 期望 {expected}B, 实际只有 {len(all_bytes)}B")
+    else:
+        all_bytes = all_bytes[:expected]
+
+    print(f"  CockroachFrames: {frame_count} 帧 × {frame_size}B = {len(all_bytes)}B")
     return all_bytes
 
 # ── 图形数据解析 ────────────────────────────────
@@ -210,6 +236,11 @@ def build_image(hw_dir, output_path):
     # CatFrames
     cat = extract_catframes(hw_dir)
     write_at(ADDR_CATFRAMES, cat)
+
+    # CockroachFrames
+    cockroach = extract_cockroachframes(hw_dir)
+    if cockroach:
+        write_at(ADDR_COCKROACHFRAMES, cockroach)
 
     # Shapes
     shapes = extract_shapes(hw_dir)

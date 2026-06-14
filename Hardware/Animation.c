@@ -7,6 +7,7 @@
   */
 #include "Animation.h"
 #include "CatAnimation.h"
+#include "CockroachAnimation.h"
 #include "OLED.h"
 #include "FontCN.h"
 #include "Delay.h"
@@ -21,10 +22,13 @@ typedef struct {
 } AnimDesc_t;
 
 static const uint8_t *g_catName[] = {HZK_YUE, HZK_XIN, HZK_MAO};
+static const uint8_t *g_roachName[] = {HZK_87E5, HZK_8782};  /* 蟑螂 */
 
 static const AnimDesc_t g_anims[ANIM_COUNT] = {
     { g_catName, 3, CatAnimation_Init, CatAnimation_Play,
       CatAnimation_Exit },  /* 月薪猫 */
+    { g_roachName, 2, CockroachAnimation_Init, CockroachAnimation_Play,
+      CockroachAnimation_Exit },  /* 蟑螂 */
 };
 
 /**

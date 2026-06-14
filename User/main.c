@@ -60,8 +60,11 @@ int main(void)
 
 	/* ── W25Q64 初始化 ── */
 	W25Q64_Init();
-#if 0  /* W25Q64 诊断 + 串口烧录 — 需要时改为 1 */
+
+	/* 上电检测串口烧录（3 秒超时，无 PC 连接则跳过） */
 	Serial_FlashBurn();
+
+#if 0  /* W25Q64 诊断 — 需要时改为 1 */
 	OLED_Clear();
 	{
 		uint8_t m,tp,c,s1,s2,s3,d[4]; char h[3];
