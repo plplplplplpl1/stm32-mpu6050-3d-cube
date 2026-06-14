@@ -18,7 +18,8 @@
 | **Auto-scale** — 4D shapes automatically sized to fit the screen | **自动缩放** — 4D 图形自动适配屏幕大小 |
 | **Menu system** — 4-item main menu with sub-menu navigation | **菜单系统** — 4项主菜单 + 子菜单导航 |
 | **3D mode** — 31 wireframe shapes, KEY1 toggle direction, KEY3/4 cycle shapes | **3D模式** — 31种线框图形，KEY1切换方向，KEY3/4切换图形 |
-| **2D graph** — y=sin(t) real-time plotting with hold-button scroll | **2D绘图** — y=sin(t)实时图像，按住按键滚动t轴 |
+| **2D graph** — y=sin(t) / y=tan(t) real-time plotting with auto-scroll, speed multiplier | **2D绘图** — y=sin(t)/y=tan(t) 实时图像，自动滚动 + 点按加速 |
+| **Rotary encoder** — single knob + button replaces 4 keys, EXTI-driven | **旋转编码器** — 单旋钮 + 按钮替代 4 按键，中断驱动 |
 | **Animation** — cat + cockroach OLED animations from W25Q64 flash | **动画** — 月薪猫 + 蟑螂动画，从W25Q64实时播放 |
 | **Power-on self-test** for MPU6050 connection | **上电自检**，检测 MPU6050 连接状态 |
 
@@ -33,16 +34,16 @@
 
 ## Pin Connections / 引脚连接
 
-| STM32 | MPU6050 | OLED | Button |
-|-------|---------|------|--------|
+| STM32 | MPU6050 | OLED | Encoder |
+|-------|---------|------|---------|
 | PB10 | SCL | - | - |
 | PB11 | SDA | - | - |
 | PB6  | -   | SCL | - |
 | PB7  | -   | SDA | - |
-| PB1  | -   | -   | KEY1 |
-| PA2  | -   | -   | KEY2 |
-| PA6  | -   | -   | KEY3 |
-| PA4  | -   | -   | KEY4 |
+| PB0  | -   | -   | Enc A |
+| PB1  | -   | -   | Enc B |
+| PA7  | -   | -   | Button |
+| —    | -   | -   | Enc C → GND |
 
 > If your wiring differs, adjust the pin definitions in the source code.
 > 如果接线不同，请在源码中修改引脚定义。
@@ -87,39 +88,45 @@ After self-test, the 3D cube appears on the OLED. Rotate the board — the cube 
 
 ### 4. Button Controls / 按键操作
 
-**Main Menu / 主菜单：**
+**硬件：旋转编码器 + 独立按钮**
 
-After power-on self-test, the main menu appears with 4 items: 3D&2D, 动画 (animation), 温度监测 (temperature), 计步器 (pedometer). 3D&2D and 动画 are available; others show "待开发" (under development).
+| 编码器引脚 | STM32 | 功能 |
+|-----------|-------|------|
+| A | PB0 (EXTI0) | 编码器 A 相 |
+| B | PB1 (EXTI1) | 编码器 B 相 |
+| C | GND | 公共端 |
+| 按钮 | PA7 | 确认/返回 |
 
-上电自检后进入主菜单，共4项：3D&2D、动画、温度监测、计步器。3D&2D 和动画可用，其余显示"待开发"。
+**操作映射（全局）：**
 
-| Button / 按键 | Action / 功能 |
-|--------------|--------------|
-| **KEY3 (PA6)** | Move cursor up / 光标上移 |
-| **KEY4 (PA4)** | Move cursor down / 光标下移 |
-| **KEY1 (PB1)** | Select / 确认选择 |
-| **KEY2 (PA2)** | Return to parent menu / 返回上级菜单 |
+| 操作 | 功能 |
+|------|------|
+| 旋转编码器 CW/CCW | 光标移动 / 选项切换 / 图形切换 |
+| 短按按钮（<500ms） | 确认选择（原 KEY1） |
+| 长按按钮（≥500ms） | 返回上级（原 KEY2） |
 
 **3D Cube Mode / 3D模式：**
 
 进入 3D&2D → 3D 后显示线框魔方，转动开发板实时跟随。
 
-| Button / 按键 | Action / 功能 |
-|--------------|--------------|
-| **KEY1 (PB1)** | Toggle rotation direction / 切换旋转方向 |
-| **KEY2 (PA2)** | Return to 3D&2D sub-menu / 返回子菜单 |
-| **KEY3 (PA6)** | Next shape / 下一个图形 |
-| **KEY4 (PA4)** | Previous shape / 上一个图形 |
+| 操作 | Action / 功能 |
+|------|--------------|
+| **短按按钮** | Toggle rotation direction / 切换旋转方向 |
+| **长按按钮** | Return to 3D&2D sub-menu / 返回子菜单 |
+| **旋转 CW** | Next shape / 下一个图形 |
+| **旋转 CCW** | Previous shape / 上一个图形 |
 
 **2D Graph Mode / 2D绘图模式：**
 
-进入 3D&2D → 2D → 三角函数 后显示 y=sin(t) 坐标系实时图像。
+进入 3D&2D → 2D → 三角函数 后选择 y=sin(t) 或 y=tan(t)。
 
-| Button / 按键 | Action / 功能 |
-|--------------|--------------|
-| **Hold PB1** | t decreases (graph scrolls left) / t减小（曲线左移） |
-| **Hold PA6** | t increases (graph scrolls right) / t增大（曲线右移） |
-| **KEY2 (PA2)** | Return to 2D sub-menu / 返回2D子菜单 |
+| 操作 | Action / 功能 |
+|------|--------------|
+| **旋转编码器（不按按钮）** | 手动微调 t（0.05/步），停止自动滚动 |
+| **按住按钮 + 转一下 CW** | 启动自动增大 t，松手继续 |
+| **按住按钮 + 转一下 CCW** | 启动自动减小 t，松手继续 |
+| **自动滚动中点按按钮** | 翻倍加速（1→2→4→8→...，无上限） |
+| **按住按钮 800ms 不转** | 退出返回 2D 子菜单 |
 
 ## Key Algorithms / 关键算法
 
@@ -163,16 +170,24 @@ After power-on self-test, the main menu appears with 4 items: 3D&2D, 动画 (ani
   - 主菜单"水平仪"→"3D&2D"（ASCII 显示），新增 `Menu_Show3D2D()` 子菜单（3D/2D选择）
   - 2D 层新增三角函数/指数函数子菜单（中文标签），KEY3/4 切换，KEY1 确认，KEY2 返回
   - 子菜单支持返回上层（循环 while 嵌套），3D 模式 KEY2 回到子菜单而非主菜单
-- **三角函数 y=sin(t) 实时绘图**：
+- **旋转编码器替代 4 按键**：
+  - 编码器 A(PB0)+B(PB1) 双边沿 EXTI 中断驱动，Gray 码状态机累加解码
+  - 独立按钮(PA7) 状态机区分短按确认 / 长按返回（500ms）
+  - `Key_GetEncRaw()` 暴露中断累加值，支持细粒度连续调节（1/4 detent = 0.05 单位）
+  - 释放原 KEY1~KEY4 引脚（PA2/PA4/PA6/PB1）
+- **三角函数 y=sin(t) 实时绘图（交互重构）**：
   - 直角坐标系：y轴(竖)+t轴(横)，原点(32,32)，10px/单位，箭头 + 字母标签(y/t)
-  - 按住 PB1：t 以步长 0.2 减小；按住 PA6：t 以步长 0.2 增大；PA2 返回子菜单
+  - **脱手自动滚动**：按住按钮 + 转一下设方向 → 松手继续自动滚动
+  - **点按加速**：自动滚动中点按按钮翻倍速度，无上限
+  - **长按 800ms 无操作退出**，不按按钮转旋钮手动微调 + 停止自动滚动
   - 曲线使用逐段 `OLED_DrawLine` 连线，Bresenham 消除断点，保持 1px 细线
-  - GPIO 直接读取实现按键长按检测（`Key_GetNum` 仅支持下降沿触发）
+- **新增正切函数 y=tan(t)**：三角函数下含 sin/tan 二级子菜单，交互逻辑与 sin 完全一致
+  - 渐近线跳变检测：相邻像素 |Δy| ≥ 40px 自动断开，消除竖线毛刺
+  - `tanf` 值钳制 ±100 防止溢出
 - **新增 `OLED_ShowCharBuf`**：ASCII 字符写入 OLED_GRAM 缓冲区（`|=` 保留背景），随 `OLED_Refresh` 统一刷新，不闪烁
-- **新增中文字模**：三(U+4E09)、角(U+89D2)、函(U+51FD)、数(U+6570)、指(U+6307)，HZK16 行优先格式
+- **新增中文字模**：三(U+4E09)、角(U+89D2)、函(U+51FD)、数(U+6570)、指(U+6307)、切(U+5207)，HZK16 行优先格式
 - **蟑螂动画**（小猫从兜里掏出蟑螂 GIF → OLED 128×64 28帧）：`CockroachAnimation.c/h`，W25Q64 分区 0x01D000
 - **串口烧录优化**：擦除上限→W25Q_RESERVED_ADDR，大小校验 128KB→256KB，上电自动检测改为 `#if 0` 默认关闭
-- **按键说明更新**：README 按键表与 README 自述文件同步更新
 
 ### 2026-06-11
 
