@@ -16,10 +16,10 @@
 | **Hardware timer TIM2** for accurate frame time measurement | **硬件定时器 TIM2** 精确测量帧时间，姿态积分与真实时间同步 |
 | **4D auto-rotation** — continuous rotation in XW and YZ planes for 4D polytopes | **4D 自动旋转** — 4D 多胞体在 XW、YZ 平面持续旋转 |
 | **Auto-scale** — 4D shapes automatically sized to fit the screen | **自动缩放** — 4D 图形自动适配屏幕大小 |
-| **KEY1** — toggle rotation direction (normal / reverse) | **KEY1** — 切换旋转方向（正向/反向） |
-| **KEY2** — recalibrate gyroscope zero-bias | **KEY2** — 陀螺仪零偏重标定 |
-| **KEY3 (PA6)** — cycle shapes forward (up) | **KEY3 (PA6)** — 向上切换显示图形 |
-| **KEY4 (PA4)** — cycle shapes backward (down) | **KEY4 (PA4)** — 向下切换显示图形 |
+| **Menu system** — 4-item main menu with sub-menu navigation | **菜单系统** — 4项主菜单 + 子菜单导航 |
+| **3D mode** — 31 wireframe shapes, KEY1 toggle direction, KEY3/4 cycle shapes | **3D模式** — 31种线框图形，KEY1切换方向，KEY3/4切换图形 |
+| **2D graph** — y=sin(t) real-time plotting with hold-button scroll | **2D绘图** — y=sin(t)实时图像，按住按键滚动t轴 |
+| **Animation** — cat + cockroach OLED animations from W25Q64 flash | **动画** — 月薪猫 + 蟑螂动画，从W25Q64实时播放 |
 | **Power-on self-test** for MPU6050 connection | **上电自检**，检测 MPU6050 连接状态 |
 
 ## Hardware Requirements / 硬件需求
@@ -89,24 +89,37 @@ After self-test, the 3D cube appears on the OLED. Rotate the board — the cube 
 
 **Main Menu / 主菜单：**
 
-After power-on self-test, the main menu appears with 4 items: 水平仪 (level meter), 电子罗盘 (compass), 温度监测 (temperature), 计步器 (pedometer). Currently only 水平仪 is available; others show "待开发" (under development).
+After power-on self-test, the main menu appears with 4 items: 3D&2D, 动画 (animation), 温度监测 (temperature), 计步器 (pedometer). 3D&2D and 动画 are available; others show "待开发" (under development).
 
-上电自检后进入主菜单，共4项：水平仪、电子罗盘、温度监测、计步器。仅水平仪可用，其余显示"待开发"。
+上电自检后进入主菜单，共4项：3D&2D、动画、温度监测、计步器。3D&2D 和动画可用，其余显示"待开发"。
 
 | Button / 按键 | Action / 功能 |
 |--------------|--------------|
 | **KEY3 (PA6)** | Move cursor up / 光标上移 |
 | **KEY4 (PA4)** | Move cursor down / 光标下移 |
 | **KEY1 (PB1)** | Select / 确认选择 |
+| **KEY2 (PA2)** | Return to parent menu / 返回上级菜单 |
 
-**3D Cube Mode / 3D立方体模式：**
+**3D Cube Mode / 3D模式：**
 
-| Button / 按键 | Action / 功能 | OLED Feedback / 反馈 |
-|--------------|--------------|---------------------|
-| **KEY1 (PB1)** | Toggle rotation direction / 切换旋转方向 | Shows / 显示 `方向:NORMAL / REVERSE`（400ms） |
-| **KEY2 (PA2)** | Return to menu / 返回主菜单 | - |
-| **KEY3 (PA6)** | Next shape / 下一个图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
-| **KEY4 (PA4)** | Previous shape / 上一个图形 | Shows shape label (400ms) / 显示图形名称（400ms） |
+进入 3D&2D → 3D 后显示线框魔方，转动开发板实时跟随。
+
+| Button / 按键 | Action / 功能 |
+|--------------|--------------|
+| **KEY1 (PB1)** | Toggle rotation direction / 切换旋转方向 |
+| **KEY2 (PA2)** | Return to 3D&2D sub-menu / 返回子菜单 |
+| **KEY3 (PA6)** | Next shape / 下一个图形 |
+| **KEY4 (PA4)** | Previous shape / 上一个图形 |
+
+**2D Graph Mode / 2D绘图模式：**
+
+进入 3D&2D → 2D → 三角函数 后显示 y=sin(t) 坐标系实时图像。
+
+| Button / 按键 | Action / 功能 |
+|--------------|--------------|
+| **Hold PB1** | t decreases (graph scrolls left) / t减小（曲线左移） |
+| **Hold PA6** | t increases (graph scrolls right) / t增大（曲线右移） |
+| **KEY2 (PA2)** | Return to 2D sub-menu / 返回2D子菜单 |
 
 ## Key Algorithms / 关键算法
 
@@ -142,6 +155,23 @@ After power-on self-test, the main menu appears with 4 items: 水平仪 (level m
 - **修复 DO/DI 引脚标注问题**：模块丝印是从主设备视角标注，DO=STM32 MOSI→PB14，DI=STM32 MISO→PB15
 - **MPU6050 优化**：新增 burst 连续读取模式，一次 I2C 事务读 14 字节，效率提升 10 倍
 - **OLED I2C 增强**：超时保护 + 总线恢复（SWRST + 9 个 SCK 脉冲）+ 自动重试
+
+### 2026-06-14
+
+- **菜单重构**：
+  - 主菜单"水平仪"→"3D&2D"（ASCII 显示），新增 `Menu_Show3D2D()` 子菜单（3D/2D选择）
+  - 2D 层新增三角函数/指数函数子菜单（中文标签），KEY3/4 切换，KEY1 确认，KEY2 返回
+  - 子菜单支持返回上层（循环 while 嵌套），3D 模式 KEY2 回到子菜单而非主菜单
+- **三角函数 y=sin(t) 实时绘图**：
+  - 直角坐标系：y轴(竖)+t轴(横)，原点(32,32)，10px/单位，箭头 + 字母标签(y/t)
+  - 按住 PB1：t 以步长 0.2 减小；按住 PA6：t 以步长 0.2 增大；PA2 返回子菜单
+  - 曲线使用逐段 `OLED_DrawLine` 连线，Bresenham 消除断点，保持 1px 细线
+  - GPIO 直接读取实现按键长按检测（`Key_GetNum` 仅支持下降沿触发）
+- **新增 `OLED_ShowCharBuf`**：ASCII 字符写入 OLED_GRAM 缓冲区（`|=` 保留背景），随 `OLED_Refresh` 统一刷新，不闪烁
+- **新增中文字模**：三(U+4E09)、角(U+89D2)、函(U+51FD)、数(U+6570)、指(U+6307)，HZK16 行优先格式
+- **蟑螂动画**（小猫从兜里掏出蟑螂 GIF → OLED 128×64 28帧）：`CockroachAnimation.c/h`，W25Q64 分区 0x01D000
+- **串口烧录优化**：擦除上限→W25Q_RESERVED_ADDR，大小校验 128KB→256KB，上电自动检测改为 `#if 0` 默认关闭
+- **按键说明更新**：README 按键表与 README 自述文件同步更新
 
 ### 2026-06-11
 
