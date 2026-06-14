@@ -73,6 +73,7 @@ extern const uint8_t HZK_8782[32];  /* 螂 */
 extern const uint8_t HZK_4E09[32];  /* 三 */
 extern const uint8_t HZK_89D2[32];  /* 角 */
 extern const uint8_t HZK_51FD[32];  /* 函 */
+extern const uint8_t HZK_5207[32];  /* 切 */
 extern const uint8_t HZK_6570[32];  /* 数 */
 extern const uint8_t HZK_6307[32];  /* 指 */
 
