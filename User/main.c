@@ -313,13 +313,17 @@ int main(void)
 									OLED_DrawLine(122,31,127, 32, 1);
 									OLED_DrawLine(122,33,127, 32, 1);
 
-									for (x = 0; x < 128; x++)
 									{
-										tVal = t0 + (float)(x - 32) / 10.0f;
-										yVal = sinf(tVal);
-										px = x;
-										py = 32 - (int16_t)(yVal * 20.0f);
-										OLED_DrawPoint(px, py, 1);
+										int16_t lx = 0, ly;
+										tVal = t0 + (float)(lx - 32) / 10.0f;
+										ly = 32 - (int16_t)(sinf(tVal) * 20.0f);
+										for (x = 1; x < 128; x++)
+										{
+											tVal = t0 + (float)(x - 32) / 10.0f;
+											py = 32 - (int16_t)(sinf(tVal) * 20.0f);
+											OLED_DrawLine(lx, ly, x, py, 1);
+											lx = x; ly = py;
+										}
 									}
 									/* 标签 t, y (写入缓冲，随 Refresh 刷新) */
 									OLED_ShowCharBuf(1, 4, 'y');
@@ -327,9 +331,9 @@ int main(void)
 									OLED_Refresh();
 
 									if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_1) == 0)
-										t0 -= 0.01f;
+										t0 -= 0.2f;
 									if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6) == 0)
-										t0 += 0.01f;
+										t0 += 0.2f;
 									if (Key_GetNum() == 2)
 										break;
 
