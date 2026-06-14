@@ -476,6 +476,8 @@ int main(void)
 									}
 								}
 
+										while (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+										Delay_ms(100);
 										OLED_Clear();
 										OLED_ShowString(2, 1, curTrig == 0 ? ">" : " ");
 										OLED_ShowString(2, 2, "1 y=sin(t)");
