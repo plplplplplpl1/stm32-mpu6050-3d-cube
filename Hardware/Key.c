@@ -1,97 +1,170 @@
-#include "stm32f10x.h"                  // Device header
-#include "Delay.h"
+#include "stm32f10x.h"
 
-#define DEBOUNCE_CNT    3    // 连续N次读到低电平才确认按下（每次调用间隔≈10ms）
+/* 编码器引脚: A=PB0(EXTI0), B=PB1(EXTI1), SW(按下)=PA7 */
+#define ENC_A_PORT   GPIOB
+#define ENC_A_PIN    GPIO_Pin_0
+#define ENC_B_PORT   GPIOB
+#define ENC_B_PIN    GPIO_Pin_1
+#define ENC_SW_PORT  GPIOA
+#define ENC_SW_PIN   GPIO_Pin_7
+
+#define ENC_STEP       4     /* 累加器阈值，一个 detent = 4 次跳变 */
+#define ENC_COOLDOWN   2     /* 触发后冷却(次)，防一次 detent 多次触发 */
+#define SW_DEBOUNCE    2     /* 按钮消抖(次) */
+#define LONG_PRESS_CNT 50    /* 长按阈值 ≈500ms @ 10ms/call */
+
+/* ── ISR 与主循环共享的编码器状态 ── */
+static volatile uint8_t g_prevEnc = 0;
+static volatile int8_t  g_encAcc = 0;
 
 /**
-  * 函    数：按键初始化
-  * 参    数：无
-  * 返 回 值：无
+  * @brief  Gray 码查表：编码器 AB 状态跳变 → 步进增量
+  *         prev<<2|cur → +1(CW) / -1(CCW) / 0(无效/静止)
+  *         AB 经反相编码（低电平=触点闭合=active）
   */
-void Key_Init(void)
+static const int8_t g_encTable[16] = {
+	 0, -1,  1,  0,    /* 00→00, 00→01, 00→10, 00→11 */
+	 1,  0,  0, -1,    /* 01→00, 01→01, 01→10, 01→11 */
+	-1,  0,  0,  1,    /* 10→00, 10→01, 10→10, 10→11 */
+	 0,  1, -1,  0     /* 11→00, 11→01, 11→10, 11→11 */
+};
+
+/**
+  * @brief  编码器中断服务函数 — 任一引脚跳变立即触发
+  */
+static void Enc_ProcessISR(void)
 {
-	/*开启时钟*/
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB, ENABLE);		//开启GPIOB的时钟
-	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);		//开启GPIOA的时钟
+	uint8_t curA = GPIO_ReadInputDataBit(ENC_A_PORT, ENC_A_PIN);
+	uint8_t curB = GPIO_ReadInputDataBit(ENC_B_PORT, ENC_B_PIN);
+	uint8_t curEnc = (curA ? 0 : 2) | (curB ? 0 : 1);   /* 反相：触点闭合=1 */
+	g_encAcc += g_encTable[(g_prevEnc << 2) | curEnc];
+	g_prevEnc = curEnc;
+}
 
-	/*GPIO初始化*/
-	GPIO_InitTypeDef GPIO_InitStructure;
-	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_IPU;
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-	GPIO_Init(GPIOB, &GPIO_InitStructure);						//将PB1引脚初始化为上拉输入
+/* PB0 → EXTI0 */
+void EXTI0_IRQHandler(void)
+{
+	if (EXTI_GetITStatus(EXTI_Line0) != RESET) {
+		Enc_ProcessISR();
+		EXTI_ClearITPendingBit(EXTI_Line0);
+	}
+}
 
-	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_4 | GPIO_Pin_2;
-	GPIO_Init(GPIOA, &GPIO_InitStructure);						//将PA6、PA4、PA2引脚初始化为上拉输入
-		GPIOA->BSRR = GPIO_Pin_2;		//显式置位PA2上拉
+/* PB1 → EXTI1 */
+void EXTI1_IRQHandler(void)
+{
+	if (EXTI_GetITStatus(EXTI_Line1) != RESET) {
+		Enc_ProcessISR();
+		EXTI_ClearITPendingBit(EXTI_Line1);
+	}
 }
 
 /**
-  * 函    数：按键获取键码（非阻塞，无 Delay_ms 消抖）
-  * 参    数：无
-  * 返 回 值：按下按键的键码值，范围：0~4，返回0代表没有按键按下
-  * 注意事项：采用计数消抖（连续 N 次读到低电平才确认），不阻塞主循环。
-  *           调用间隔建议 ≤20ms，配合 DEBOUNCE_CNT=3 可实现 ~30ms 消抖。
+  * @brief  编码器+按钮初始化（上拉输入 + EXTI 中断）
+  */
+void Key_Init(void)
+{
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOB |
+	                       RCC_APB2Periph_AFIO, ENABLE);
+
+	GPIO_InitTypeDef g;
+	g.GPIO_Mode  = GPIO_Mode_IPU;
+	g.GPIO_Speed = GPIO_Speed_50MHz;
+
+	g.GPIO_Pin = ENC_A_PIN;                  /* PB0 — 编码器 A */
+	GPIO_Init(ENC_A_PORT, &g);
+
+	g.GPIO_Pin = ENC_B_PIN;                  /* PB1 — 编码器 B */
+	GPIO_Init(ENC_B_PORT, &g);
+
+	g.GPIO_Pin = ENC_SW_PIN;                 /* PA7 — 按钮（轮询） */
+	GPIO_Init(ENC_SW_PORT, &g);
+
+	/* 先复位所有 EXTI 配置，清除之前 PA7 的 EXTI7 */
+	EXTI_DeInit();
+
+	/* EXTI 线映射到 GPIO 端口 */
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource0);   /* PB0 → EXTI0 */
+	GPIO_EXTILineConfig(GPIO_PortSourceGPIOB, GPIO_PinSource1);   /* PB1 → EXTI1 */
+
+	/* EXTI 配置：双边沿触发 */
+	EXTI_InitTypeDef e;
+	e.EXTI_Line    = EXTI_Line0 | EXTI_Line1;
+	e.EXTI_Mode    = EXTI_Mode_Interrupt;
+	e.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+	e.EXTI_LineCmd = ENABLE;
+	EXTI_Init(&e);
+
+	/* NVIC 配置 */
+	NVIC_InitTypeDef n;
+	n.NVIC_IRQChannelPreemptionPriority = 1;
+	n.NVIC_IRQChannelSubPriority       = 1;
+	n.NVIC_IRQChannelCmd               = ENABLE;
+
+	n.NVIC_IRQChannel = EXTI0_IRQn;          /* PB0 */
+	NVIC_Init(&n);
+
+	n.NVIC_IRQChannel = EXTI1_IRQn;          /* PB1 */
+	NVIC_Init(&n);
+}
+
+/**
+  * @brief  读取编码器+按钮事件（非阻塞）
+  * @retval 0=无操作  1=短按(确认)  2=长按(返回)  3=CCW(逆时针)  4=CW(顺时针)
   */
 uint8_t Key_GetNum(void)
 {
 	uint8_t KeyNum = 0;
-	static uint8_t cnt1 = 0, cnt6 = 0, cnt12 = 0, cnt4 = 0;
-	static uint8_t ready1 = 1, ready6 = 1, ready12 = 1, ready4 = 1;
-	uint8_t cur1, cur6, cur12, cur4;
+	static uint8_t encCool = 0;
+	static uint8_t swState = 0;
+	static uint16_t swHold = 0;
 
-	cur1  = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_1);
-	cur6  = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6);
-	cur4  = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4);
-	cur12 = GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_2);
+	uint8_t curSW = GPIO_ReadInputDataBit(ENC_SW_PORT, ENC_SW_PIN);
 
-	/* ── PB1 (Key1) ── */
-	if (cur1 == 0) {
-		if (ready1 && ++cnt1 >= DEBOUNCE_CNT) {
-			KeyNum = 1;
-			ready1 = 0;
-			cnt1 = 0;
-		}
+	/* ── 编码器：读取中断累计的步数 ── */
+	if (encCool > 0) {
+		encCool--;
 	} else {
-		ready1 = 1;
-		cnt1 = 0;
+		if (g_encAcc >= ENC_STEP) {
+			KeyNum = 4;          /* CW */
+			g_encAcc = 0;
+			encCool  = ENC_COOLDOWN;
+		} else if (g_encAcc <= -ENC_STEP) {
+			KeyNum = 3;          /* CCW */
+			g_encAcc = 0;
+			encCool  = ENC_COOLDOWN;
+		}
 	}
 
-	/* ── PA6 (Key3) ── */
-	if (cur6 == 0) {
-		if (ready6 && ++cnt6 >= DEBOUNCE_CNT) {
-			KeyNum = 3;
-			ready6 = 0;
-			cnt6 = 0;
+	/* ── 按钮：状态机判短按/长按 ── */
+	if (curSW == 0) {
+		swHold++;
+		if (swState == 0 && swHold >= SW_DEBOUNCE) {
+			swState = 1;
+		}
+		if (swHold >= LONG_PRESS_CNT && swState == 1) {
+			KeyNum  = 2;         /* 长按 */
+			swState = 2;
+			swHold  = 0;
 		}
 	} else {
-		ready6 = 1;
-		cnt6 = 0;
-	}
-
-	/* ── PA4 (Key4) ── */
-	if (cur4 == 0) {
-		if (ready4 && ++cnt4 >= DEBOUNCE_CNT) {
-			KeyNum = 4;
-			ready4 = 0;
-			cnt4 = 0;
+		if (swState == 1) {
+			KeyNum = 1;          /* 短按 */
 		}
-	} else {
-		ready4 = 1;
-		cnt4 = 0;
-	}
-
-	/* ── PA2 (Key2) ── */
-	if (cur12 == 0) {
-		if (ready12 && ++cnt12 >= DEBOUNCE_CNT) {
-			KeyNum = 2;
-			ready12 = 0;
-			cnt12 = 0;
-		}
-	} else {
-		ready12 = 1;
-		cnt12 = 0;
+		swHold  = 0;
+		swState = 0;
 	}
 
 	return KeyNum;
+}
+
+/**
+  * @brief  读取并清零编码器中断累计的原始步数（±1/Gray跳变）
+  *         用于需要细粒度连续调节的场景（如 sin 图滚动）
+  */
+int8_t Key_GetEncRaw(void)
+{
+	int8_t val = g_encAcc;
+	g_encAcc = 0;
+	return val;
 }

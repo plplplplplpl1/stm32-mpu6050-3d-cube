@@ -300,6 +300,10 @@ int main(void)
 								int16_t x;
 								float tVal, yVal;
 								int16_t px, py;
+								uint16_t btnHold = 0;
+								int8_t autoDir = 0;
+								uint16_t speedMul = 1;
+								uint8_t btnPrev = 0, purePress = 0;
 
 								while (1)
 								{
@@ -330,12 +334,47 @@ int main(void)
 									OLED_ShowCharBuf(3, 15, 't');
 									OLED_Refresh();
 
-									if (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_1) == 0)
-										t0 -= 0.2f;
-									if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_6) == 0)
-										t0 += 0.2f;
-									if (Key_GetNum() == 2)
-										break;
+									{
+										int8_t raw = Key_GetEncRaw();
+										uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+										/* 按钮刚按下 → 记录为纯净点击（旋转会清除） */
+										if (btn && !btnPrev) {
+											purePress = 1;
+											btnHold = 0;
+										}
+
+										if (btn) {
+											btnHold++;
+											if (raw != 0) {
+												/* 按住+旋转 → 设定自动滚动方向 */
+												if (raw > 0) autoDir =  1;
+												if (raw < 0) autoDir = -1;
+												purePress = 0;
+												btnHold = 0;
+											}
+											/* 长按800ms不转 → 退出 */
+											if (btnHold >= 80)
+												break;
+										} else {
+											/* 松手：如果是纯净短按(未旋转)且有自动滚动 → 加速 */
+											if (btnPrev && purePress && autoDir != 0)
+												speedMul <<= 1;  /* 翻倍，无上限 */
+											purePress = 0;
+											btnHold = 0;
+											/* 不按按钮旋转 → 手动微调 + 停止自动滚动 */
+											if (raw != 0) {
+												t0 += (float)raw * 0.05f;
+												autoDir = 0;
+												speedMul = 1;
+											}
+										}
+										btnPrev = btn;
+
+										/* 自动滚动（松手后持续，带速度倍率） */
+										if (autoDir != 0)
+											t0 += (float)autoDir * 0.15f * (float)speedMul;
+									}
 
 									Delay_ms(10);
 								}
