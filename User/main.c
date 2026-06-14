@@ -294,88 +294,203 @@ int main(void)
 						}
 						if (keyNum == 1)  /* 確認 */
 						{
-							if (cur2d == 0)  /* 三角函數 — y=sin(t) */
+							if (cur2d == 0)  /* 三角函数 → y=sin(t)/y=tan(t) */
 							{
-								float t0 = 0.0f;
-								int16_t x;
-								float tVal, yVal;
-								int16_t px, py;
-								uint16_t btnHold = 0;
-								int8_t autoDir = 0;
-								uint16_t speedMul = 1;
-								uint8_t btnPrev = 0, purePress = 0;
+								uint8_t curTrig = 0;
+
+								OLED_Clear();
+								OLED_ShowString(2, 1, ">");
+								OLED_ShowString(2, 2, "1 y=sin(t)");
+								OLED_ShowString(3, 1, " ");
+								OLED_ShowString(3, 2, "2 y=tan(t)");
 
 								while (1)
 								{
-									OLED_ClearBuffer();
-									/* y轴(竖) + 上箭头 */
-									OLED_DrawLine(32, 0, 32, 63, 1);
-									OLED_DrawLine(31, 5, 32,  0, 1);
-									OLED_DrawLine(33, 5, 32,  0, 1);
-									/* t轴(横) + 右箭头 */
-									OLED_DrawLine( 0,32,127, 32, 1);
-									OLED_DrawLine(122,31,127, 32, 1);
-									OLED_DrawLine(122,33,127, 32, 1);
-
+									keyNum = Key_GetNum();
+									if (keyNum == 2) break;
+									if (keyNum == 3 || keyNum == 4)
 									{
-										int16_t lx = 0, ly;
-										tVal = t0 + (float)(lx - 32) / 10.0f;
-										ly = 32 - (int16_t)(sinf(tVal) * 20.0f);
-										for (x = 1; x < 128; x++)
-										{
-											tVal = t0 + (float)(x - 32) / 10.0f;
-											py = 32 - (int16_t)(sinf(tVal) * 20.0f);
-											OLED_DrawLine(lx, ly, x, py, 1);
-											lx = x; ly = py;
-										}
+										curTrig = curTrig ? 0 : 1;
+										OLED_ShowString(2, 1, curTrig == 0 ? ">" : " ");
+										OLED_ShowString(3, 1, curTrig == 0 ? " " : ">");
 									}
-									/* 标签 t, y (写入缓冲，随 Refresh 刷新) */
-									OLED_ShowCharBuf(1, 4, 'y');
-									OLED_ShowCharBuf(3, 15, 't');
-									OLED_Refresh();
-
+									if (keyNum == 1)
 									{
-										int8_t raw = Key_GetEncRaw();
-										uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
-
-										/* 按钮刚按下 → 记录为纯净点击（旋转会清除） */
-										if (btn && !btnPrev) {
-											purePress = 1;
-											btnHold = 0;
+										if (curTrig == 0)  /* y=sin(t) */
+										{
+									float t0 = 0.0f;
+									int16_t x;
+									float tVal, yVal;
+									int16_t px, py;
+									uint16_t btnHold = 0;
+									int8_t autoDir = 0;
+									uint16_t speedMul = 1;
+									uint8_t btnPrev = 0, purePress = 0;
+	
+									while (1)
+									{
+										OLED_ClearBuffer();
+										/* y轴(竖) + 上箭头 */
+										OLED_DrawLine(32, 0, 32, 63, 1);
+										OLED_DrawLine(31, 5, 32,  0, 1);
+										OLED_DrawLine(33, 5, 32,  0, 1);
+										/* t轴(横) + 右箭头 */
+										OLED_DrawLine( 0,32,127, 32, 1);
+										OLED_DrawLine(122,31,127, 32, 1);
+										OLED_DrawLine(122,33,127, 32, 1);
+	
+										{
+											int16_t lx = 0, ly;
+											tVal = t0 + (float)(lx - 32) / 10.0f;
+											ly = 32 - (int16_t)(sinf(tVal) * 20.0f);
+											for (x = 1; x < 128; x++)
+											{
+												tVal = t0 + (float)(x - 32) / 10.0f;
+												py = 32 - (int16_t)(sinf(tVal) * 20.0f);
+												OLED_DrawLine(lx, ly, x, py, 1);
+												lx = x; ly = py;
+											}
 										}
-
-										if (btn) {
-											btnHold++;
-											if (raw != 0) {
-												/* 按住+旋转 → 设定自动滚动方向 */
-												if (raw > 0) autoDir =  1;
-												if (raw < 0) autoDir = -1;
-												purePress = 0;
+										/* 标签 t, y (写入缓冲，随 Refresh 刷新) */
+										OLED_ShowCharBuf(1, 4, 'y');
+										OLED_ShowCharBuf(3, 15, 't');
+										OLED_Refresh();
+	
+										{
+											int8_t raw = Key_GetEncRaw();
+											uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+	
+											/* 按钮刚按下 → 记录为纯净点击（旋转会清除） */
+											if (btn && !btnPrev) {
+												purePress = 1;
 												btnHold = 0;
 											}
-											/* 长按800ms不转 → 退出 */
-											if (btnHold >= 80)
-												break;
-										} else {
-											/* 松手：如果是纯净短按(未旋转)且有自动滚动 → 加速 */
-											if (btnPrev && purePress && autoDir != 0)
-												speedMul <<= 1;  /* 翻倍，无上限 */
-											purePress = 0;
-											btnHold = 0;
-											/* 不按按钮旋转 → 手动微调 + 停止自动滚动 */
-											if (raw != 0) {
-												t0 += (float)raw * 0.05f;
-												autoDir = 0;
-												speedMul = 1;
+	
+											if (btn) {
+												btnHold++;
+												if (raw != 0) {
+													/* 按住+旋转 → 设定自动滚动方向 */
+													if (raw > 0) autoDir =  1;
+													if (raw < 0) autoDir = -1;
+													purePress = 0;
+													btnHold = 0;
+												}
+												/* 长按800ms不转 → 退出 */
+												if (btnHold >= 80)
+													break;
+											} else {
+												/* 松手：如果是纯净短按(未旋转)且有自动滚动 → 加速 */
+												if (btnPrev && purePress && autoDir != 0)
+													speedMul <<= 1;  /* 翻倍，无上限 */
+												purePress = 0;
+												btnHold = 0;
+												/* 不按按钮旋转 → 手动微调 + 停止自动滚动 */
+												if (raw != 0) {
+													t0 += (float)raw * 0.05f;
+													autoDir = 0;
+													speedMul = 1;
+												}
 											}
+											btnPrev = btn;
+	
+											/* 自动滚动（松手后持续，带速度倍率） */
+											if (autoDir != 0)
+												t0 += (float)autoDir * 0.15f * (float)speedMul;
 										}
-										btnPrev = btn;
+	
+										Delay_ms(10);
+									}
+										}
+									else  /* y=tan(t) */
+									{
+										float t0 = 0.0f;
+										int16_t x;
+										float tVal, yVal;
+										int16_t px, py;
+										uint16_t btnHold = 0;
+										int8_t autoDir = 0;
+										uint16_t speedMul = 1;
+										uint8_t btnPrev = 0, purePress = 0;
 
-										/* 自动滚动（松手后持续，带速度倍率） */
-										if (autoDir != 0)
-											t0 += (float)autoDir * 0.15f * (float)speedMul;
+										while (1)
+										{
+											OLED_ClearBuffer();
+											OLED_DrawLine(32, 0, 32, 63, 1);
+											OLED_DrawLine(31, 5, 32,  0, 1);
+											OLED_DrawLine(33, 5, 32,  0, 1);
+											OLED_DrawLine( 0,32,127, 32, 1);
+											OLED_DrawLine(122,31,127, 32, 1);
+											OLED_DrawLine(122,33,127, 32, 1);
+
+											{
+												int16_t lx = 0, ly;
+												tVal = t0 + (float)(lx - 32) / 10.0f;
+												yVal = tanf(tVal);
+												if (yVal > 100.0f) yVal = 100.0f;
+												if (yVal < -100.0f) yVal = -100.0f;
+												ly = 32 - (int16_t)(yVal * 20.0f);
+												for (x = 1; x < 128; x++)
+												{
+													tVal = t0 + (float)(x - 32) / 10.0f;
+													yVal = tanf(tVal);
+													if (yVal > 100.0f) yVal = 100.0f;
+													if (yVal < -100.0f) yVal = -100.0f;
+													py = 32 - (int16_t)(yVal * 20.0f);
+													{ int16_t d = ly - py; if (d < 0) d = -d;
+													if (d < 40) OLED_DrawLine(lx, ly, x, py, 1); }
+													lx = x; ly = py;
+												}
+											}
+											OLED_ShowCharBuf(1, 4, 'y');
+											OLED_ShowCharBuf(3, 15, 't');
+											OLED_Refresh();
+
+											{
+												int8_t raw = Key_GetEncRaw();
+												uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+												if (btn && !btnPrev) {
+													purePress = 1;
+													btnHold = 0;
+												}
+												if (btn) {
+													btnHold++;
+													if (raw != 0) {
+														if (raw > 0) autoDir =  1;
+														if (raw < 0) autoDir = -1;
+														purePress = 0;
+														btnHold = 0;
+													}
+													if (btnHold >= 80)
+														break;
+												} else {
+													if (btnPrev && purePress && autoDir != 0)
+														speedMul <<= 1;
+													purePress = 0;
+													btnHold = 0;
+													if (raw != 0) {
+														t0 += (float)raw * 0.05f;
+														autoDir = 0;
+														speedMul = 1;
+													}
+												}
+												btnPrev = btn;
+
+												if (autoDir != 0)
+													t0 += (float)autoDir * 0.15f * (float)speedMul;
+											}
+
+											Delay_ms(10);
+										}
 									}
 
+										/* 恢复子菜单 */
+										OLED_Clear();
+										OLED_ShowString(2, 1, curTrig == 0 ? ">" : " ");
+										OLED_ShowString(2, 2, "1 y=sin(t)");
+										OLED_ShowString(3, 1, curTrig == 0 ? " " : ">");
+										OLED_ShowString(3, 2, "2 y=tan(t)");
+									}
 									Delay_ms(10);
 								}
 							}
