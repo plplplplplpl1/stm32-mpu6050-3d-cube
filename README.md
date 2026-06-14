@@ -1,4 +1,4 @@
-# STM32-MPU6050-3D-Cube / 体感魔方  <sup>`v16.3.0.3446`</sup>
+# STM32-MPU6050-3D-Cube / 体感魔方
 
 **EN** — A real-time 3D attitude display project based on **STM32F103C8T6**, **MPU6050** (6-axis gyroscope + accelerometer), and **OLED** (128x64). When you rotate the board, a 3D wireframe cube on the OLED rotates accordingly.
 
@@ -156,7 +156,7 @@ After power-on self-test, the main menu appears with 4 items: 3D&2D, 动画 (ani
 - **MPU6050 优化**：新增 burst 连续读取模式，一次 I2C 事务读 14 字节，效率提升 10 倍
 - **OLED I2C 增强**：超时保护 + 总线恢复（SWRST + 9 个 SCK 脉冲）+ 自动重试
 
-### v16.3.0.3446 (2026-06-14)
+### 2026-06-14
 
 - **3D旋转方向统一**：交换 `Cube3D_Render` 前两个参数（PitchDeg↔RollDeg），修正物理 MPU6050 朝向与屏幕渲染的轴映射；三轴符号统一同向（Y 取正、Z 取负）
 - **菜单重构**：
