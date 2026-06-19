@@ -1,0 +1,39 @@
+# Keil / ARM
+*.uvguix.*
+*.uvoptx
+*.scvd
+*.crf
+*.d
+*.o
+*.dep
+*.axf
+*.htm
+*.lnp
+*.map
+*.sct
+*.iex
+RTE/**
+*.bak
+
+# Build output
+Objects/*
+Listings/*
+DebugConfig/*
+
+# IDE
+*.uvguix
+*.uvopt
+*.uvproj.user
+
+# Windows
+Thumbs.db
+*.swp
+*.swo
+
+# Project specific
+keilkill.bat
+.claude/
+
+# Generated binaries
+w25q64_image.bin
+*_build.log
