@@ -12,7 +12,7 @@ typedef struct { const char *ascii; const uint8_t **cn; uint8_t cnLen, avail; } 
 static const uint8_t *g_m1[]={HZK_52A8,HZK_753B};
 static const uint8_t *g_m4[]={HZK_96F7,HZK_8FBE};
 static const MenuItem g_main[4]={
-	{"3D&2D",NULL,0,1},{NULL,g_m1,2,1},{"OLED",NULL,0,1},{NULL,g_m4,2,0},
+	{"3D&2D",NULL,0,1},{NULL,g_m1,2,1},{"OLED",NULL,0,1},{NULL,g_m4,2,1},
 };
 #define MAIN_N 4
 static const MenuItem g_sub[3]={{" 3D",NULL,0,1},{" 2D",NULL,0,1},{"BACK",NULL,0,1},};

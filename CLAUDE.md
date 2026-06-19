@@ -23,8 +23,9 @@ Build from command line via the `/build-keil` skill or open the `.uvprojx` in uV
 
 ```
 User/          main.c, Attitude (complementary filter), Cube3D (3D/4D render), stm32f10x_it
-Hardware/      MPU6050, MyI2C (software I2C), OLED (SSD1306, software SPI), Key (rotary encoder+button),
-               LED, FontCN, Menu, W25Q64 (SPI NOR flash), serial (UART),
+Hardware/      MPU6050, MyI2C (software I2C), OLED (SH1106/SSD1306兼容, software SPI),
+               Key (rotary encoder+button), LED, FontCN, Menu, Radar (预留),
+               W25Q64 (SPI NOR flash), serial (UART),
                CatAnimation, CockroachAnimation, Animation,
                Cube3D_4D.h, Cube3D_Hyperbolic.h (auto-generated shape data)
 System/        Delay (SysTick-based μs/ms delay)
@@ -38,7 +39,7 @@ Start/         CMSIS core_cm3, stm32f10x.h, system_stm32f10x, startup_md.s
 main() → OLED_Init → Key_Init → MPU6050_Init → Serial_Init → Delay_ms(100)
        → W25Q64_Init → Timer2_Init → Attitude_Init  // 尝试从Flash加载校准，失败则标定
        → MPU6050_GetID() → 显示传感器状态(中文) → Menu_Show()
-       → 菜单: 0=3D&2D(子菜单→3D/2D) / 1=动画 / 2=温度监测(预留) / 3=计步器(预留)
+       → 菜单: 0=3D&2D(子菜单→3D/2D) / 1=动画 / 2=OLED检测 / 3=雷达(测试版)
 ```
 
 ## Input System — Rotary Encoder + Button
@@ -117,9 +118,9 @@ main() → OLED_Init → Key_Init → MPU6050_Init → Serial_Init → Delay_ms(
 
 渲染管线：`Cube3D_Render(pitch, roll, yaw, shape, dt)` — 旋转矩阵投影 → Bresenham画线到OLED缓冲 → `OLED_Refresh()` 整屏刷新。
 
-## Display Interface — Software SPI (SSD1306)
+## Display Interface — Software SPI (SH1106, SSD1306 兼容指令集)
 
-1.3" OLED 7-pin SPI module (**SSD1306** controller, 128×64):
+1.3" OLED 7-pin SPI module (**SH1106** controller, 128×64, 132列内部RAM):
 
 | OLED Pin | STM32 Pin | Function |
 |----------|-----------|----------|
@@ -131,8 +132,8 @@ main() → OLED_Init → Key_Init → MPU6050_Init → Serial_Init → Delay_ms(
 | DC | PB8 | Data/Cmd select (H=data, L=cmd) |
 | CS | PB9 | Chip select (active low) |
 
-- **SPI Mode**: Mode 0 (CPOL=0, CPHA=0), MSB first, ~500 kHz
-- **Column offset**: 0 (`OLED_COL_OFFSET=0`), SSD1306 RAM is 128×64
+- **SPI Mode**: Mode 0 (CPOL=0, CPHA=0), MSB first, 位带操作 ~5MHz
+- **Column offset**: 2 (`OLED_COL_OFFSET=2`), SH1106 内部RAM为132列，可视区从列2开始，偏移消除右边缘鬼影
 - **Refresh**: Page-by-page mode (8 pages × 128 bytes). Each page: set page (0xB0|n) → set col 0 → burst 128 bytes. More reliable than horizontal addressing over bitbang SPI.
 - **Init**: Standard SSD1306 sequence including charge pump enable (0x8D, 0x14)
 - **VCOMH**: 0x30, **Pre-charge**: 0xF1
@@ -163,7 +164,7 @@ Software I2C (MyI2C.c) with 4μs delays (~125kHz). Burst read (14 bytes in one t
 ## Cat Animation (月薪猫)
 
 - `convert_cat.py` (root) or `Tools/gif_to_oled.py` (more feature-rich) converts `cat.GIF` → `Hardware/CatFrames.h` (28 frames, 1024B each)
-- `CatAnimation_Play()` reads frames from W25Q64 in real-time, writes directly to SSD1306 GDDRAM
+- `CatAnimation_Play()` reads frames from W25Q64 in real-time, writes directly to OLED GRAM buffer then `OLED_Refresh()`
 - 长按按钮返回菜单；LED1 亮起表示播放中
 
 ## Shape Data Generators (Tools/)
@@ -177,16 +178,22 @@ Software I2C (MyI2C.c) with 4μs delays (~125kHz). Burst read (14 bytes in one t
 
 - **W25Q64 DO/DI labels**: Module labels are master-perspective, NOT flash-perspective
 - **Software SPI on breadboard**: Not reliable for this module. Hardware SPI2 was tested and works for reads, but software SPI debugging consumed significant time. If re-testing, start with hardware SPI.
-- **OLED SPI**: Software bitbang Mode 0. No hardware SPI peripheral needed. CS must go HIGH between command and data phases for some clone chips — current code raises CS after each transaction.
+- **OLED SPI**: Software bitbang Mode 0. No hardware SPI peripheral needed. CS must go HIGH between command and data phases for some clone chips — current code raises CS after each transaction. 实际芯片为 SH1106（非 SSD1306），`OLED_COL_OFFSET=2` 消除右边缘鬼影，切勿改为 0。
+- **Radar（雷达）**: 搁置中。当前为极简测试版 — 纯整数 Bresenham 圆网格 + 8 方向离散扫描线（编码器切换），无 MPU6050/Attitude 接入。
+- **2D 函数图像**: 3D&2D→2D 子菜单，4 类 14 函数。X=`/14.0f`, Y=`*20.0f`。编码器微调 + 按住滚轮调速，800ms 长按退出。
+  - POW (x², √x, 1/x) — **已知 bug: 菜单自动退出**，根因未定位，与 Key_GetNum 状态残留相关
+  - 三角 (sin, cos, tan, csc) — 正常
+  - 反三角 (arcsin, arccos, arctan) — 正常，arcsin/arccos 用 `/32.0f` 撑大定义域
+  - 指数/对数 (eˣ, ln, lg) — 正常
 - **MPU6050**: Uses burst read (14 bytes in one I2C transaction), auto-increment mode
 - **Encoder init**: `EXTI_DeInit()` is called before configuring EXTI lines in `Key_Init()` — this clears any previous pin mappings. Do NOT remove this call; it prevents PA7 ghost EXTI7 interference.
 - **Key_GetNum() call rate**: Must be called every ~10ms. The button state machine (`swHold` counter) and encoder cooldown (`encCool`) depend on consistent call intervals. Do NOT insert long blocking delays between calls.
 - **MPU6050 clock source**: `PWR_MGMT_1` = `0x00` (internal 8MHz RC). Do NOT use `0x01` (X-axis gyro PLL) — unreliable startup.
 - **W25Q64 write debugging**: See `doc/W25Q64调试报告.md` for hardware-level diagnosis history (JEDEC OK, WEL stuck low, etc.) — if writes mysteriously fail, check that WP/HOLD are pulled high on the module.
 
-## OLED Refresh — Page-by-Page (SSD1306)
+## OLED Refresh — Page-by-Page (SH1106/SSD1306)
 
-`OLED_Refresh()` writes 8 pages individually via page addressing mode (set page → set column → 128-byte burst). This avoids the SSD1306 horizontal addressing extensions (0x20/0x21/0x22) which can behave inconsistently across different module batches.
+`OLED_Refresh()` writes 8 pages individually via page addressing mode (set page → set column → 128-byte burst), single CS assertion for all 8 pages. This avoids the horizontal addressing extensions (0x20/0x21/0x22) which can behave inconsistently across different module batches.
 
 **Critical**: Do NOT add horizontal addressing commands (0x20/0x21/0x22) — stick with page mode for maximum compatibility.
 

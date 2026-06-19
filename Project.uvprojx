@@ -868,6 +868,16 @@
               <FileType>5</FileType>
               <FilePath>.\Hardware\CockroachFrames.h</FilePath>
             </File>
+            <File>
+              <FileName>HCSR04.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\HCSR04.c</FilePath>
+            </File>
+            <File>
+              <FileName>Radar.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Hardware\Radar.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

@@ -7,6 +7,7 @@
 #include "Cube3D.h"
 #include "FontCN.h"
 #include "Menu.h"
+#include "Radar.h"
 #include "Animation.h"
 #include "W25Q64.h"
 #include "W25Q64_Layout.h"
@@ -41,17 +42,15 @@ static void Timer2_Init(void)
 	TIM2->CR1 |= TIM_CR1_CEN;
 }
 
-static void OledTest(uint8_t t) {
-	uint8_t p, c; OLED_ClearBuffer();
-	switch(t){
-	case 0: for(p=0;p<8;p++)for(c=0;c<128;c++)OLED_GRAM[p][c]=0xFF; break;
-	case 1: OLED_Clear(); break;
-	case 2: for(c=0;c<128;c+=4)for(p=0;p<8;p++)OLED_GRAM[p][c]=0xFF; break;
-	case 3: for(p=0;p<8;p++)for(c=0;c<128;c++)if((p+c)&1)OLED_GRAM[p][c]=0xFF; break;
-	case 4: for(p=0;p<8;p++)OLED_GRAM[p][127]=0xFF; break;
-	case 5: for(p=0;p<8;p++)for(c=0;c<127;c++)OLED_GRAM[p][c]=0xFF; break;
-	} OLED_Refresh();
-}
+static void OledTest(uint8_t t){uint8_t p,c;OLED_ClearBuffer();switch(t){
+case 0:for(p=0;p<8;p++)for(c=0;c<128;c++)OLED_GRAM[p][c]=0xFF;break;
+case 1:OLED_Clear();break;
+case 2:for(c=0;c<128;c+=4)for(p=0;p<8;p++)OLED_GRAM[p][c]=0xFF;break;
+case 3:for(p=0;p<8;p++)for(c=0;c<128;c++)if((p+c)&1)OLED_GRAM[p][c]=0xFF;break;
+case 4:for(p=0;p<8;p++)OLED_GRAM[p][127]=0xFF;break;
+case 5:for(p=0;p<8;p++)for(c=0;c<127;c++)OLED_GRAM[p][c]=0xFF;break;
+}OLED_Refresh();}
+
 int main(void)
 {
 	uint8_t mpuId;
@@ -283,26 +282,33 @@ int main(void)
 				}
 				else  /* 2D — 三角函数 / 指数函数 */
 				{
-					const uint8_t *trig[] = {HZK_4E09, HZK_89D2, HZK_51FD, HZK_6570};
-					const uint8_t *expn[] = {HZK_6307, HZK_6570, HZK_51FD, HZK_6570};
-					uint8_t cur2d = 0;
-					OLED_Clear();
-					OLED_ShowString(2, 1, ">");
-					OLED_ShowChineseStr(2, 2, trig, 4);
-					OLED_ShowString(3, 1, " ");
-					OLED_ShowChineseStr(3, 2, expn, 4);
+					const uint8_t *trig[]   = {HZK_4E09, HZK_89D2, HZK_51FD, HZK_6570};
+					const uint8_t *invtrig[] = {HZK_53CD, HZK_4E09, HZK_89D2};           /* 反三角 */
+					const uint8_t *expn[]    = {HZK_6307, HZK_6570, HZK_51FD, HZK_6570};
+						uint8_t cur2d = 0;
+								OLED_Clear();
+								OLED_ShowString(1, 1, " ");
+								OLED_ShowString(1, 2, "POW");
+								OLED_ShowString(2, 1, " ");
+								OLED_ShowChineseStr(2, 2, trig, 4);
+								OLED_ShowString(3, 1, " ");
+								OLED_ShowChineseStr(3, 2, invtrig, 3);
+								OLED_ShowString(4, 1, " ");
+								OLED_ShowChineseStr(4, 2, expn, 4);
 
 					while (1)
 					{
 						keyNum = Key_GetNum();
-						if (keyNum == 2)  /* PA2: 返回子菜单 */
+						if (keyNum == 2)  /* 返回子菜单 */
 							break;
-						if (keyNum == 3 || keyNum == 4)  /* 上下切换 */
-						{
-							cur2d = cur2d ? 0 : 1;
-							OLED_ShowString(2, 1, cur2d == 0 ? ">" : " ");
-							OLED_ShowString(3, 1, cur2d == 0 ? " " : ">");
-						}
+						if (keyNum == 4) { cur2d++; if (cur2d >= 4) cur2d = 0; }
+						if (keyNum == 3) { cur2d--; if (cur2d <  0) cur2d = 3; }
+								{
+									OLED_ShowString(1, 1, cur2d == 0 ? ">" : " ");
+									OLED_ShowString(2, 1, cur2d == 1 ? ">" : " ");
+									OLED_ShowString(3, 1, cur2d == 2 ? ">" : " ");
+									OLED_ShowString(4, 1, cur2d == 3 ? ">" : " ");
+								}
 						if (keyNum == 1)  /* 確認 */
 						{
 							if (cur2d == 0)  /* 三角函数 -> y=sin(t)/y=tan(t) */
@@ -310,20 +316,26 @@ int main(void)
 								uint8_t curTrig = 0;
 
 								OLED_Clear();
-								OLED_ShowString(2, 1, ">");
-								OLED_ShowString(2, 2, "1 y=sin(t)");
+								OLED_ShowString(1, 1, " ");
+								OLED_ShowString(1, 2, "1 y=sin(t)");
+								OLED_ShowString(2, 1, " ");
+								OLED_ShowString(2, 2, "2 y=cos(t)");
 								OLED_ShowString(3, 1, " ");
-								OLED_ShowString(3, 2, "2 y=tan(t)");
+								OLED_ShowString(3, 2, "3 y=tan(t)");
+								OLED_ShowString(4, 1, " ");
+								OLED_ShowString(4, 2, "4 y=csc(t)");
 
 								while (1)
 								{
 									keyNum = Key_GetNum();
 									if (keyNum == 2) break;
-									if (keyNum == 3 || keyNum == 4)
+									if (keyNum == 4) { curTrig++; if (curTrig >= 4) curTrig = 0; }
+									if (keyNum == 3) { curTrig--; if (curTrig <  0) curTrig = 3; }
 									{
-										curTrig = curTrig ? 0 : 1;
-										OLED_ShowString(2, 1, curTrig == 0 ? ">" : " ");
-										OLED_ShowString(3, 1, curTrig == 0 ? " " : ">");
+										OLED_ShowString(1, 1, curTrig == 0 ? ">" : " ");
+										OLED_ShowString(2, 1, curTrig == 1 ? ">" : " ");
+										OLED_ShowString(3, 1, curTrig == 2 ? ">" : " ");
+										OLED_ShowString(4, 1, curTrig == 3 ? ">" : " ");
 									}
 									if (keyNum == 1)
 									{
@@ -350,11 +362,11 @@ int main(void)
 
 									{
 										int16_t lx = 0, ly;
-										tVal = t0 + (float)(lx - 32) / 10.0f;
+										tVal = t0 + (float)(lx - 32) / 14.0f;
 										ly = 32 - (int16_t)(sinf(tVal) * 20.0f);
 										for (x = 1; x < 128; x++)
 										{
-											tVal = t0 + (float)(x - 32) / 10.0f;
+											tVal = t0 + (float)(x - 32) / 14.0f;
 											py = 32 - (int16_t)(sinf(tVal) * 20.0f);
 											OLED_DrawLine(lx, ly, x, py, 1);
 											lx = x; ly = py;
@@ -404,7 +416,82 @@ int main(void)
 								}
 										}
 
-								else  /* y=tan(t) */
+								else if (curTrig == 1)  /* y=cos(t) */
+								{
+									float t0 = 0.0f;
+									int16_t x;
+									float tVal, yVal;
+									int16_t px, py;
+									uint16_t btnHold = 0;
+									int8_t autoDir = 0;
+									uint16_t speedMul = 1;
+
+									while (1)
+									{
+										OLED_ClearBuffer();
+										OLED_DrawLine(32, 0, 32, 63, 1);
+										OLED_DrawLine(31, 5, 32,  0, 1);
+										OLED_DrawLine(33, 5, 32,  0, 1);
+										OLED_DrawLine( 0,32,127, 32, 1);
+										OLED_DrawLine(122,31,127, 32, 1);
+										OLED_DrawLine(122,33,127, 32, 1);
+										{
+											int16_t lx = 0, ly;
+											tVal = t0 + (float)(lx - 32) / 14.0f;
+											ly = 32 - (int16_t)(cosf(tVal) * 20.0f);
+											for (x = 1; x < 128; x++)
+											{
+												tVal = t0 + (float)(x - 32) / 14.0f;
+												py = 32 - (int16_t)(cosf(tVal) * 20.0f);
+												OLED_DrawLine(lx, ly, x, py, 1);
+												lx = x; ly = py;
+											}
+										}
+										OLED_ShowCharBuf(1, 4, 'y');
+										OLED_ShowCharBuf(3, 15, 't');
+										OLED_Refresh();
+
+										{
+											int8_t raw = Key_GetEncRaw();
+											uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+											if (btn) {
+												btnHold++;
+												if (raw != 0) {
+													if (autoDir == 0) {
+														if (raw > 0) autoDir =  1;
+														if (raw < 0) autoDir = -1;
+														speedMul = 1;
+													} else {
+														if ((raw > 0 && autoDir > 0) || (raw < 0 && autoDir < 0))
+															speedMul <<= 1;
+														else {
+															speedMul >>= 1;
+															if (speedMul == 0) { autoDir = 0; speedMul = 1; }
+														}
+													}
+													btnHold = 0;
+												}
+												if (btnHold >= 80)
+													break;
+											} else {
+												btnHold = 0;
+												if (raw != 0) {
+													t0 += (float)raw * 0.05f;
+													autoDir = 0;
+													speedMul = 1;
+												}
+											}
+
+											if (autoDir != 0)
+												t0 += (float)autoDir * 0.15f * (float)speedMul;
+										}
+
+										Delay_ms(10);
+									}
+								}
+
+										else if (curTrig == 2)  /* y=tan(t) */
 								{
 									float t0 = 0.0f;
 									int16_t x;
@@ -426,14 +513,14 @@ int main(void)
 
 										{
 											int16_t lx = 0, ly;
-											tVal = t0 + (float)(lx - 32) / 10.0f;
+											tVal = t0 + (float)(lx - 32) / 14.0f;
 											yVal = tanf(tVal);
 											if (yVal > 100.0f) yVal = 100.0f;
 											if (yVal < -100.0f) yVal = -100.0f;
 											ly = 32 - (int16_t)(yVal * 20.0f);
 											for (x = 1; x < 128; x++)
 											{
-												tVal = t0 + (float)(x - 32) / 10.0f;
+												tVal = t0 + (float)(x - 32) / 14.0f;
 												yVal = tanf(tVal);
 												if (yVal > 100.0f) yVal = 100.0f;
 												if (yVal < -100.0f) yVal = -100.0f;
@@ -486,34 +573,473 @@ int main(void)
 										Delay_ms(10);
 									}
 								}
+						else  /* curTrig == 3: y=csc(t) */
+						{
+							float t0 = 0.0f;
+							int16_t x;
+							float tVal, yVal;
+							int16_t px, py;
+							uint16_t btnHold = 0;
+							int8_t autoDir = 0;
+							uint16_t speedMul = 1;
+
+							while (1)
+							{
+								OLED_ClearBuffer();
+								OLED_DrawLine(32, 0, 32, 63, 1);
+								OLED_DrawLine(31, 5, 32,  0, 1);
+								OLED_DrawLine(33, 5, 32,  0, 1);
+								OLED_DrawLine( 0,32,127, 32, 1);
+								OLED_DrawLine(122,31,127, 32, 1);
+								OLED_DrawLine(122,33,127, 32, 1);
+
+								{
+									int16_t lx = 0, ly;
+									tVal = t0 + (float)(lx - 32) / 14.0f;
+									yVal = 1.0f / sinf(tVal);
+									if (yVal > 100.0f) yVal = 100.0f;
+									if (yVal < -100.0f) yVal = -100.0f;
+									ly = 32 - (int16_t)(yVal * 20.0f);
+									for (x = 1; x < 128; x++)
+									{
+										tVal = t0 + (float)(x - 32) / 14.0f;
+										yVal = 1.0f / sinf(tVal);
+										if (yVal > 100.0f) yVal = 100.0f;
+										if (yVal < -100.0f) yVal = -100.0f;
+										py = 32 - (int16_t)(yVal * 20.0f);
+										{ int16_t d = ly - py; if (d < 0) d = -d;
+										if (d < 40) OLED_DrawLine(lx, ly, x, py, 1); }
+										lx = x; ly = py;
+									}
+								}
+								OLED_ShowCharBuf(1, 4, 'y');
+								OLED_ShowCharBuf(3, 15, 't');
+								OLED_Refresh();
+
+								{
+									int8_t raw = Key_GetEncRaw();
+									uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+									if (btn) {
+										btnHold++;
+										if (raw != 0) {
+											if (autoDir == 0) {
+												if (raw > 0) autoDir =  1;
+												if (raw < 0) autoDir = -1;
+												speedMul = 1;
+											} else {
+												if ((raw > 0 && autoDir > 0) || (raw < 0 && autoDir < 0))
+													speedMul <<= 1;
+												else {
+													speedMul >>= 1;
+													if (speedMul == 0) { autoDir = 0; speedMul = 1; }
+												}
+											}
+											btnHold = 0;
+										}
+										if (btnHold >= 80) break;
+									} else {
+										btnHold = 0;
+										if (raw != 0) {
+											t0 += (float)raw * 0.05f;
+											autoDir = 0;
+											speedMul = 1;
+										}
+									}
+
+									if (autoDir != 0)
+										t0 += (float)autoDir * 0.15f * (float)speedMul;
+								}
+
+								Delay_ms(10);
+							}
+						}
+									while (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+									Delay_ms(100);
+									OLED_Clear();
+									OLED_ShowString(1, 1, curTrig == 0 ? ">" : " ");
+									OLED_ShowString(1, 2, "1 y=sin(t)");
+									OLED_ShowString(2, 1, curTrig == 1 ? ">" : " ");
+									OLED_ShowString(2, 2, "2 y=cos(t)");
+									OLED_ShowString(3, 1, curTrig == 2 ? ">" : " ");
+									OLED_ShowString(3, 2, "3 y=tan(t)");
+									OLED_ShowString(4, 1, curTrig == 3 ? ">" : " ");
+									OLED_ShowString(4, 2, "4 y=csc(t)");
+								}
+								Delay_ms(10);
+							}
+							}
+						else if (cur2d == 1)  /* 反三角 */
+							{
+								uint8_t curArc = 0;
+
+								OLED_Clear();
+								OLED_ShowString(2, 1, ">");
+								OLED_ShowString(2, 2, "1 y=arcsin(t)");
+								OLED_ShowString(3, 1, " ");
+								OLED_ShowString(3, 2, "2 y=arccos(t)");
+								OLED_ShowString(4, 1, " ");
+								OLED_ShowString(4, 2, "3 y=arctan(t)");
+
+								while (1)
+								{
+									keyNum = Key_GetNum();
+									if (keyNum == 2) break;
+									if (keyNum == 4) { curArc++; if (curArc >= 3) curArc = 0; }
+									if (keyNum == 3) { curArc--; if (curArc <  0) curArc = 2; }
+									{
+										OLED_ShowString(2, 1, curArc == 0 ? ">" : " ");
+										OLED_ShowString(3, 1, curArc == 1 ? ">" : " ");
+										OLED_ShowString(4, 1, curArc == 2 ? ">" : " ");
+									}
+									if (keyNum == 1)
+									{
+										float t0 = 0.0f;
+										int16_t x;
+										int16_t px, py;
+										uint16_t btnHold = 0;
+										int8_t autoDir = 0;
+										uint16_t speedMul = 1;
+
+										while (1)
+										{
+											OLED_ClearBuffer();
+											OLED_DrawLine(32, 0, 32, 63, 1);
+											OLED_DrawLine(31, 5, 32,  0, 1);
+											OLED_DrawLine(33, 5, 32,  0, 1);
+											OLED_DrawLine( 0,32,127, 32, 1);
+											OLED_DrawLine(122,31,127, 32, 1);
+											OLED_DrawLine(122,33,127, 32, 1);
+
+											{
+												int16_t lx = 0, ly, first = 1;
+												for (x = 0; x < 128; x++)
+												{
+													/* arcsin/arccos 定义域窄，用大 scale 撑满屏幕；arctan 保持原比例 */
+								float xs = (curArc == 2) ? 14.0f : 32.0f;
+								int16_t cx = (curArc == 2) ? 32 : 64;
+								float tVal = t0 + (float)(x - cx) / xs;
+													float yVal;
+
+													if (curArc == 0)      yVal = asinf(tVal);
+													else if (curArc == 1) yVal = acosf(tVal);
+													else                  yVal = atanf(tVal);
+
+													if (curArc != 2 && (tVal < -1.0f || tVal > 1.0f)) { first = 1; continue; }
+													if (yVal > 100.0f) yVal = 100.0f;
+													if (yVal < -100.0f) yVal = -100.0f;
+													py = 32 - (int16_t)(yVal * 20.0f);
+													if (first) { lx = x; ly = py; first = 0; continue; }
+													{ int16_t d = ly - py; if (d < 0) d = -d;
+													if (d < 40) OLED_DrawLine(lx, ly, x, py, 1); }
+													lx = x; ly = py;
+												}
+											}
+											OLED_ShowCharBuf(1, 4, 'y');
+											OLED_ShowCharBuf(3, 15, 't');
+											OLED_Refresh();
+
+											{
+												int8_t raw = Key_GetEncRaw();
+												uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+												if (btn) {
+													btnHold++;
+													if (raw != 0) {
+														if (autoDir == 0) {
+															if (raw > 0) autoDir =  1;
+															if (raw < 0) autoDir = -1;
+															speedMul = 1;
+														} else {
+															if ((raw > 0 && autoDir > 0) || (raw < 0 && autoDir < 0))
+																speedMul <<= 1;
+															else {
+																speedMul >>= 1;
+																if (speedMul == 0) { autoDir = 0; speedMul = 1; }
+															}
+														}
+														btnHold = 0;
+													}
+													if (btnHold >= 80) break;
+												} else {
+													btnHold = 0;
+													if (raw != 0) {
+														t0 += (float)raw * ((curArc == 2) ? 0.05f : 0.02f);
+														autoDir = 0;
+														speedMul = 1;
+													}
+												}
+
+												if (autoDir != 0)
+													t0 += (float)autoDir * ((curArc == 2) ? 0.15f : 0.04f) * (float)speedMul;
+											}
+
+											Delay_ms(10);
+										}
 
 										while (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
 										Delay_ms(100);
 										OLED_Clear();
-										OLED_ShowString(2, 1, curTrig == 0 ? ">" : " ");
-										OLED_ShowString(2, 2, "1 y=sin(t)");
-										OLED_ShowString(3, 1, curTrig == 0 ? " " : ">");
-										OLED_ShowString(3, 2, "2 y=tan(t)");
+										OLED_ShowString(2, 1, curArc == 0 ? ">" : " ");
+										OLED_ShowString(2, 2, "1 y=arcsin(t)");
+										OLED_ShowString(3, 1, curArc == 1 ? ">" : " ");
+										OLED_ShowString(3, 2, "2 y=arccos(t)");
+										OLED_ShowString(4, 1, curArc == 2 ? ">" : " ");
+										OLED_ShowString(4, 2, "3 y=arctan(t)");
 									}
 									Delay_ms(10);
 								}
 							}
-							else
-							{
-								OLED_Clear();
-								OLED_ShowChineseStr(2, 3, expn, 4);
-								OLED_ShowString(3, 3, "WIP");
-								while (Key_GetNum() == 0);
-								Delay_ms(200);
-							}
-							OLED_Clear();
-							OLED_ShowString(2, 1, cur2d == 0 ? ">" : " ");
-							OLED_ShowChineseStr(2, 2, trig, 4);
-							OLED_ShowString(3, 1, cur2d == 0 ? " " : ">");
-							OLED_ShowChineseStr(3, 2, expn, 4);
-							}
 
+							else if (cur2d == 2)  /* 指数/对数 */
+							{
+								uint8_t curExp = 0;
+
+								OLED_Clear();
+								OLED_ShowString(2, 1, ">");
+								OLED_ShowString(2, 2, "1 y=e^x");
+								OLED_ShowString(3, 1, " ");
+								OLED_ShowString(3, 2, "2 y=ln(x)");
+								OLED_ShowString(4, 1, " ");
+								OLED_ShowString(4, 2, "3 y=lg(x)");
+
+								while (1)
+								{
+									keyNum = Key_GetNum();
+									if (keyNum == 2) break;
+									if (keyNum == 4) { curExp++; if (curExp >= 3) curExp = 0; }
+									if (keyNum == 3) { curExp--; if (curExp <  0) curExp = 2; }
+									{
+										OLED_ShowString(2, 1, curExp == 0 ? ">" : " ");
+										OLED_ShowString(3, 1, curExp == 1 ? ">" : " ");
+										OLED_ShowString(4, 1, curExp == 2 ? ">" : " ");
+									}
+									if (keyNum == 1)
+									{
+										float t0 = 0.0f;
+										int16_t x;
+										int16_t px, py;
+										uint16_t btnHold = 0;
+										int8_t autoDir = 0;
+										uint16_t speedMul = 1;
+
+										while (1)
+										{
+											OLED_ClearBuffer();
+											OLED_DrawLine(32, 0, 32, 63, 1);
+											OLED_DrawLine(31, 5, 32,  0, 1);
+											OLED_DrawLine(33, 5, 32,  0, 1);
+											OLED_DrawLine( 0,32,127, 32, 1);
+											OLED_DrawLine(122,31,127, 32, 1);
+											OLED_DrawLine(122,33,127, 32, 1);
+
+											{
+												int16_t lx = 0, ly, first = 1;
+												for (x = 0; x < 128; x++)
+												{
+													float tVal = t0 + (float)(x - 32) / 14.0f;
+													float yVal;
+
+													/* ln/lg 定义域 > 0 */
+													if (curExp != 0 && tVal <= 0.0f) { first = 1; continue; }
+
+													if (curExp == 0)      yVal = expf(tVal);
+													else if (curExp == 1) yVal = logf(tVal);
+													else                  yVal = log10f(tVal);
+
+													if (yVal > 100.0f) yVal = 100.0f;
+													if (yVal < -100.0f) yVal = -100.0f;
+													py = 32 - (int16_t)(yVal * 20.0f);
+													if (first) { lx = x; ly = py; first = 0; continue; }
+													{ int16_t d = ly - py; if (d < 0) d = -d;
+													if (d < 40) OLED_DrawLine(lx, ly, x, py, 1); }
+													lx = x; ly = py;
+												}
+											}
+											OLED_ShowCharBuf(1, 4, 'y');
+											OLED_ShowCharBuf(3, 15, 't');
+											OLED_Refresh();
+
+											{
+												int8_t raw = Key_GetEncRaw();
+												uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+												if (btn) {
+													btnHold++;
+													if (raw != 0) {
+														if (autoDir == 0) {
+															if (raw > 0) autoDir =  1;
+															if (raw < 0) autoDir = -1;
+															speedMul = 1;
+														} else {
+															if ((raw > 0 && autoDir > 0) || (raw < 0 && autoDir < 0))
+																speedMul <<= 1;
+															else {
+																speedMul >>= 1;
+																if (speedMul == 0) { autoDir = 0; speedMul = 1; }
+															}
+														}
+														btnHold = 0;
+													}
+													if (btnHold >= 80) break;
+												} else {
+													btnHold = 0;
+													if (raw != 0) {
+														t0 += (float)raw * 0.05f;
+														autoDir = 0;
+														speedMul = 1;
+													}
+												}
+
+												if (autoDir != 0)
+													t0 += (float)autoDir * 0.15f * (float)speedMul;
+											}
+
+											Delay_ms(10);
+										}
+
+										while (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+										Delay_ms(100);
+										OLED_Clear();
+										OLED_ShowString(2, 1, curExp == 0 ? ">" : " ");
+										OLED_ShowString(2, 2, "1 y=e^x");
+										OLED_ShowString(3, 1, curExp == 1 ? ">" : " ");
+										OLED_ShowString(3, 2, "2 y=ln(x)");
+										OLED_ShowString(4, 1, curExp == 2 ? ">" : " ");
+										OLED_ShowString(4, 2, "3 y=lg(x)");
+									}
+									Delay_ms(10);
+								}
+							}
+						else  /* cur2d == 3: POW */
+						{
+							uint8_t curPow = 0;
+
+							OLED_Clear();
+							OLED_ShowString(2, 1, ">");
+							OLED_ShowString(2, 2, "1 y=x^2");
+							OLED_ShowString(3, 1, " ");
+							OLED_ShowString(3, 2, "2 y=sqrt(x)");
+							OLED_ShowString(4, 1, " ");
+							OLED_ShowString(4, 2, "3 y=1/x");  /* 等按键状态稳定 */
+							while (1)
+							{
+								keyNum = Key_GetNum();
+								if (keyNum == 2) break;
+								if (keyNum == 4) { curPow++; if (curPow >= 3) curPow = 0; }
+								if (keyNum == 3) { curPow--; if (curPow <  0) curPow = 2; }
+								{
+									OLED_ShowString(2, 1, curPow == 0 ? ">" : " ");
+									OLED_ShowString(3, 1, curPow == 1 ? ">" : " ");
+									OLED_ShowString(4, 1, curPow == 2 ? ">" : " ");
+								}
+								if (keyNum == 1)
+								{
+									float t0 = 0.0f;
+									int16_t x, px, py;
+									uint16_t btnHold = 0;
+									int8_t autoDir = 0;
+									uint16_t speedMul = 1;
+
+									while (1)
+									{
+										OLED_ClearBuffer();
+										OLED_DrawLine(32, 0, 32, 63, 1);
+										OLED_DrawLine(31, 5, 32,  0, 1);
+										OLED_DrawLine(33, 5, 32,  0, 1);
+										OLED_DrawLine( 0,32,127, 32, 1);
+										OLED_DrawLine(122,31,127, 32, 1);
+										OLED_DrawLine(122,33,127, 32, 1);
+
+										{
+											int16_t lx = 0, ly, first = 1;
+											for (x = 0; x < 128; x++)
+											{
+												float tVal = t0 + (float)(x - 32) / 14.0f;
+												float yVal;
+
+												if (curPow == 1 && tVal < 0.0f) { first = 1; continue; }
+												if (curPow == 2 && tVal > -0.001f && tVal < 0.001f) { first = 1; continue; }
+
+												if (curPow == 0)      yVal = tVal * tVal;
+												else if (curPow == 1) yVal = sqrtf(tVal);
+												else                  yVal = 1.0f / tVal;
+
+												if (yVal > 100.0f) yVal = 100.0f;
+												if (yVal < -100.0f) yVal = -100.0f;
+												py = 32 - (int16_t)(yVal * 20.0f);
+												if (first) { lx = x; ly = py; first = 0; continue; }
+												{ int16_t d = ly - py; if (d < 0) d = -d;
+												if (d < 40) OLED_DrawLine(lx, ly, x, py, 1); }
+												lx = x; ly = py;
+											}
+										}
+										OLED_ShowCharBuf(1, 4, 'y');
+										OLED_ShowCharBuf(3, 15, 't');
+										OLED_Refresh();
+
+										{
+											int8_t raw = Key_GetEncRaw();
+											uint8_t btn = (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+
+											if (btn) {
+												btnHold++;
+												if (raw != 0) {
+													if (autoDir == 0) {
+														if (raw > 0) autoDir =  1;
+														if (raw < 0) autoDir = -1;
+														speedMul = 1;
+													} else {
+														if ((raw > 0 && autoDir > 0) || (raw < 0 && autoDir < 0))
+															speedMul <<= 1;
+														else {
+															speedMul >>= 1;
+															if (speedMul == 0) { autoDir = 0; speedMul = 1; }
+														}
+													}
+													btnHold = 0;
+												}
+												if (btnHold >= 80) break;
+											} else {
+												btnHold = 0;
+												if (raw != 0) {
+													t0 += (float)raw * 0.05f;
+													autoDir = 0;
+													speedMul = 1;
+												}
+											}
+
+											if (autoDir != 0)
+												t0 += (float)autoDir * 0.15f * (float)speedMul;
+										}
+
+										Delay_ms(10);
+									}
+									while (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_7) == 0);
+									Delay_ms(100);
+									OLED_Clear();
+									OLED_ShowString(2, 1, curPow == 0 ? ">" : " ");
+									OLED_ShowString(2, 2, "1 y=x^2");
+									OLED_ShowString(3, 1, curPow == 1 ? ">" : " ");
+									OLED_ShowString(3, 2, "2 y=sqrt(x)");
+									OLED_ShowString(4, 1, curPow == 2 ? ">" : " ");
+									OLED_ShowString(4, 2, "3 y=1/x");
+								}
+								Delay_ms(10);
+							}
+						}
+
+									OLED_Clear();
+									OLED_ShowString(1, 1, cur2d == 0 ? ">" : " ");
+									OLED_ShowString(1, 2, "POW");
+									OLED_ShowString(2, 1, cur2d == 1 ? ">" : " ");
+									OLED_ShowChineseStr(2, 2, trig, 4);
+									OLED_ShowString(3, 1, cur2d == 2 ? ">" : " ");
+									OLED_ShowChineseStr(3, 2, invtrig, 3);
+									OLED_ShowString(4, 1, cur2d == 3 ? ">" : " ");
+									OLED_ShowChineseStr(4, 2, expn, 4);
 						Delay_ms(10);
+					}
 					}
 				}
 				}  /* sub-menu while(1) */
@@ -521,16 +1047,27 @@ int main(void)
 			else if (menuRet == 1)  /* 动画 */
 		{
 			Animation_Show();
-			}
-			else if (menuRet == 2) {
-				uint8_t t = 0, k;
-				OledTest(0);
-				while(1){ k=Key_GetNum();
-					if(k==4){t=(t+1)%6;OledTest(t);}
-					else if(k==3){t=(t==0)?5:t-1;OledTest(t);}
-					else if(k==2){OLED_Clear();break;}
-					Delay_ms(10);
-				}
+		}
+		else if (menuRet == 2)  /* OLED检测 */
+		{
+			uint8_t t = 0, k;
+			OledTest(0);
+
+
+
+
+
+
+
+
+
+			while(1){k=Key_GetNum();if(k==4){t=(t+1)%6;OledTest(t);}
+			else if(k==3){t=(t==0)?5:t-1;OledTest(t);}
+			else if(k==2){OLED_Clear();break;}Delay_ms(10);}
+		}
+		else if (menuRet == 3)  /* 雷达 */
+		{
+			Radar_Run();
 		}
 	}
 }

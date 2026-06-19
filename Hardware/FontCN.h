@@ -78,6 +78,7 @@ extern const uint8_t HZK_6570[32];  /* 数 */
 extern const uint8_t HZK_6307[32];  /* 指 */
 extern const uint8_t HZK_96F7[32];  /* 雷 */
 extern const uint8_t HZK_8FBE[32];  /* 达 */
+extern const uint8_t HZK_53CD[32];  /* 反 */
 
 void OLED_ShowChineseStr(uint8_t Line, uint8_t Column, const uint8_t **Fonts, uint8_t Count);
 
